@@ -1,0 +1,4 @@
+{
+    "scripts": { "lint": "eslint ." },
+    "devDependencies": { "eslint": "^9" }
+}

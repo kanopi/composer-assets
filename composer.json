@@ -1,0 +1,45 @@
+{
+    "name": "kanopi/composer-assets",
+    "description": "A CMS-agnostic Composer plugin that scaffolds asset files from dependency packages into your project (inspired by drupal/core-composer-scaffold).",
+    "type": "composer-plugin",
+    "license": "MIT",
+    "keywords": ["composer", "plugin", "scaffold", "assets", "drupal", "wordpress"],
+    "authors": [
+        {
+            "name": "Kanopi Studios"
+        }
+    ],
+    "require": {
+        "php": ">=8.1",
+        "composer-plugin-api": "^2",
+        "symfony/yaml": "^5.4 || ^6 || ^7"
+    },
+    "require-dev": {
+        "composer/composer": "^2",
+        "phpunit/phpunit": "^9.6 || ^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Kanopi\\Composer\\Assets\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Kanopi\\Composer\\Assets\\Tests\\": "tests/src/"
+        }
+    },
+    "extra": {
+        "class": "Kanopi\\Composer\\Assets\\Plugin"
+    },
+    "config": {
+        "allow-plugins": {
+            "kanopi/composer-assets": true
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:unit": "phpunit --testsuite unit",
+        "test:integration": "phpunit --testsuite integration"
+    }
+}

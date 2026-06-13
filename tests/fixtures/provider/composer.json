@@ -1,0 +1,17 @@
+{
+    "name": "acme/assets-provider",
+    "version": "1.0.0",
+    "type": "library",
+    "extra": {
+        "composer-assets": {
+            "file-mapping": {
+                "web/.htaccess": "assets/htaccess",
+                "web/robots.txt": { "path": "assets/robots.txt", "overwrite": false },
+                "web/.htaccess-extra": { "append": "assets/htaccess-extra", "force-append": true },
+                "web/skip-me.txt": false,
+                "package.json": { "merge": "assets/package-fragment.json", "force-merge": true },
+                ".tugboat/config.yml": { "merge": "assets/tugboat-overlay.yml", "force-merge": true }
+            }
+        }
+    }
+}
