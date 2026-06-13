@@ -156,8 +156,25 @@ Controls whether generated (scaffolded) files are added to the nearest
 - *unset* (default) — **auto**: manage only when the project is a git repo that
   already ignores its `vendor` directory.
 
-Files modified via `force-append` are **not** gitignored — they are tracked
-project files, not generated artifacts.
+Files modified via `force-append` / `force-merge` are **not** gitignored — they
+are tracked project files, not generated artifacts.
+
+#### Keeping a generated file tracked (`gitignore: false`)
+
+Some scaffolded files **must be committed** to work — e.g. `.circleci/config.yml`
+and `.github/workflows/*.yml`, since CI only runs when the config is in the
+repository. Add `"gitignore": false` to an individual mapping to scaffold the
+file but keep it out of `.gitignore` management:
+
+```json
+".circleci/config.yml": { "path": "assets/config.yml", "gitignore": false },
+"web/.htaccess":        "assets/htaccess"
+```
+
+Here `.circleci/config.yml` is copied **and stays tracked**, while `web/.htaccess`
+is still ignored. The flag works on `replace`, `merge`, and `append` mappings;
+`"gitignore": true` conversely forces a file into management. (The plugin only
+*adds* `.gitignore` entries — it won't remove one a previous run already wrote.)
 
 ## Running it
 

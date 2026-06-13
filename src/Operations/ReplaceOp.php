@@ -19,6 +19,7 @@ final class ReplaceOp implements OperationInterface
         private readonly AssetFilePath $source,
         private readonly bool $overwrite = true,
         private readonly ?bool $symlink = null,
+        private readonly ?bool $gitignore = null,
     ) {
     }
 
@@ -68,7 +69,10 @@ final class ReplaceOp implements OperationInterface
 
     public function isManagedFile(): bool
     {
-        return true;
+        // A replaced file is generated, so it is gitignored by default; a
+        // per-file `gitignore: false` keeps it tracked (e.g. .circleci/config.yml,
+        // which CI only runs when committed).
+        return $this->gitignore ?? true;
     }
 
     private function ensureDirectory(string $dir): void

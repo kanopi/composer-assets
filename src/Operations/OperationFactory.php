@@ -47,6 +47,9 @@ final class OperationFactory
             ));
         }
 
+        // Optional per-file gitignore override (null = default behavior).
+        $gitignore = array_key_exists('gitignore', $value) ? (bool) $value['gitignore'] : null;
+
         // Structured merge mode (JSON/YAML).
         if (isset($value['merge'])) {
             return new MergeOp(
@@ -56,6 +59,7 @@ final class OperationFactory
                 isset($value['array']) ? (string) $value['array'] : MergeOp::ARRAY_REPLACE,
                 (bool) ($value['force-merge'] ?? false),
                 isset($value['default']),
+                $gitignore,
             );
         }
 
@@ -67,6 +71,7 @@ final class OperationFactory
                 isset($value['default']) ? $this->src((string) $value['default']) : null,
                 (bool) ($value['force-append'] ?? false),
                 isset($value['default']),
+                $gitignore,
             );
         }
 
@@ -76,6 +81,7 @@ final class OperationFactory
                 $this->src((string) $value['path']),
                 (bool) ($value['overwrite'] ?? true),
                 array_key_exists('symlink', $value) ? (bool) $value['symlink'] : null,
+                $gitignore,
             );
         }
 

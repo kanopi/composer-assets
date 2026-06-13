@@ -52,6 +52,24 @@ final class OperationFactoryTest extends TestCase
         self::assertInstanceOf(MergeOp::class, $op);
     }
 
+    public function testGitignoreFalseOnReplaceMakesUnmanaged(): void
+    {
+        $op = $this->factory()->create('.circleci/config.yml', ['path' => 'assets/config.yml', 'gitignore' => false]);
+        self::assertInstanceOf(ReplaceOp::class, $op);
+        self::assertFalse($op->isManagedFile(), 'gitignore:false must keep the file tracked');
+    }
+
+    public function testGitignoreFalseOnMergeMakesUnmanaged(): void
+    {
+        $op = $this->factory()->create('.circleci/config.yml', [
+            'merge' => 'assets/overlay.yml',
+            'default' => 'assets/base.yml',
+            'gitignore' => false,
+        ]);
+        self::assertInstanceOf(MergeOp::class, $op);
+        self::assertFalse($op->isManagedFile());
+    }
+
     public function testInvalidScalarThrows(): void
     {
         $this->expectException(\InvalidArgumentException::class);

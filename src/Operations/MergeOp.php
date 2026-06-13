@@ -40,6 +40,7 @@ final class MergeOp implements OperationInterface
         private readonly string $arrayStrategy = self::ARRAY_REPLACE,
         private readonly bool $forceMerge = false,
         private readonly bool $managedDefault = false,
+        private readonly ?bool $gitignore = null,
     ) {
         if (!in_array($arrayStrategy, [self::ARRAY_REPLACE, self::ARRAY_CONCAT, self::ARRAY_UNIQUE], true)) {
             throw new \InvalidArgumentException(sprintf('Unknown merge array strategy "%s".', $arrayStrategy));
@@ -103,6 +104,10 @@ final class MergeOp implements OperationInterface
 
     public function isManagedFile(): bool
     {
+        if ($this->gitignore !== null) {
+            return $this->gitignore; // explicit per-file override wins.
+        }
+
         // Only ours to gitignore when we created it from a default; merging into
         // a pre-existing (force-merge) file leaves a tracked project file.
         return $this->managedDefault && !$this->forceMerge;

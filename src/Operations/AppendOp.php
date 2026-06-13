@@ -27,6 +27,7 @@ final class AppendOp implements OperationInterface
         private readonly ?AssetFilePath $default = null,
         private readonly bool $forceAppend = false,
         private readonly bool $managedDefault = false,
+        private readonly ?bool $gitignore = null,
     ) {
     }
 
@@ -83,6 +84,10 @@ final class AppendOp implements OperationInterface
 
     public function isManagedFile(): bool
     {
+        if ($this->gitignore !== null) {
+            return $this->gitignore; // explicit per-file override wins.
+        }
+
         // The target is only ours to gitignore when we laid down its default;
         // a force-appended pre-existing file remains a tracked project file.
         return $this->managedDefault && !$this->forceAppend;

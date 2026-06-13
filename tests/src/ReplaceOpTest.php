@@ -55,6 +55,23 @@ final class ReplaceOpTest extends TempDirTestCase
         self::assertSame('NEW', $this->projectContents('robots.txt'));
     }
 
+    public function testReplacedFileIsManagedByDefault(): void
+    {
+        self::assertTrue((new ReplaceOp($this->src('x')))->isManagedFile());
+    }
+
+    public function testGitignoreFalseKeepsFileTracked(): void
+    {
+        // e.g. .circleci/config.yml must stay committed for CI to run.
+        $op = new ReplaceOp($this->src('x'), gitignore: false);
+        self::assertFalse($op->isManagedFile());
+    }
+
+    public function testGitignoreTrueForcesManaged(): void
+    {
+        self::assertTrue((new ReplaceOp($this->src('x'), gitignore: true))->isManagedFile());
+    }
+
     public function testMissingSourceThrows(): void
     {
         $op = new ReplaceOp($this->src('assets/missing'));

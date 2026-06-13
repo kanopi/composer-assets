@@ -1,0 +1,5 @@
+version: 2.1
+jobs:
+  build:
+    docker:
+      - image: cimg/php:8.3

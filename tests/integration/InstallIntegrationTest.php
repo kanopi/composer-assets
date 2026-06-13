@@ -102,6 +102,9 @@ final class InstallIntegrationTest extends TestCase
         // false — explicitly skipped, never created.
         self::assertFileDoesNotExist($this->workdir . '/web/skip-me.txt');
 
+        // gitignore:false replace — the CI config is scaffolded (and stays tracked).
+        self::assertFileExists($this->workdir . '/.circleci/config.yml');
+
         // JSON merge: provider's scripts/devDependencies merged into existing package.json.
         $pkg = json_decode((string) file_get_contents($this->workdir . '/package.json'), true);
         self::assertSame('vite build', $pkg['scripts']['build'], 'existing script preserved');
@@ -128,21 +131,85 @@ final class InstallIntegrationTest extends TestCase
         self::assertSame(['composer install'], $tugboat2['services']['php']['commands']['build'], 'merge must not grow list on re-run.');
     }
 
+    public function testGitignoreManagementTracksOptedOutFiles(): void
+    {
+        if (!$this->commandExists('git')) {
+            self::markTestSkipped('git binary not available on PATH.');
+        }
+
+        $providerPath = $this->pluginRoot . '/tests/fixtures/provider';
+        $project = [
+            'name' => 'acme/site',
+            'type' => 'project',
+            'minimum-stability' => 'dev',
+            'prefer-stable' => true,
+            'repositories' => [
+                ['type' => 'path', 'url' => $this->pluginRoot, 'options' => ['symlink' => false]],
+                ['type' => 'path', 'url' => $providerPath, 'options' => ['symlink' => false]],
+            ],
+            'require' => [
+                'kanopi/composer-assets' => '*',
+                'acme/assets-provider' => '*',
+            ],
+            'extra' => [
+                // Force gitignore management on so the test doesn't depend on auto-detection.
+                'composer-assets' => ['allowed-packages' => ['acme/assets-provider'], 'gitignore' => true],
+            ],
+            'config' => ['allow-plugins' => ['kanopi/composer-assets' => true]],
+        ];
+        file_put_contents(
+            $this->workdir . '/composer.json',
+            (string) json_encode($project, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        );
+        // Files merge ops need so the install doesn't error.
+        file_put_contents($this->workdir . '/package.json', '{}');
+        mkdir($this->workdir . '/.tugboat', 0777, true);
+        file_put_contents($this->workdir . '/.tugboat/config.yml', "services: {}\n");
+
+        // Make it a git working copy that ignores vendor/.
+        $this->shell('git init -q');
+        file_put_contents($this->workdir . '/.gitignore', "/vendor/\n");
+
+        [$code, $output] = $this->composer('install --no-interaction');
+        self::assertSame(0, $code, "composer install failed:\n" . $output);
+
+        // A normal replaced file is added to its directory's .gitignore.
+        self::assertFileExists($this->workdir . '/web/.gitignore');
+        self::assertStringContainsString('/.htaccess', $this->projectContents('web/.gitignore'));
+
+        // The gitignore:false CI config is scaffolded but NOT ignored -> git sees it as trackable.
+        self::assertFileExists($this->workdir . '/.circleci/config.yml');
+        [$ignoredCode] = $this->shell('git check-ignore .circleci/config.yml');
+        self::assertSame(1, $ignoredCode, '.circleci/config.yml must NOT be gitignored (CI needs it committed).');
+    }
+
+    private function projectContents(string $relative): string
+    {
+        return (string) file_get_contents($this->workdir . '/' . $relative);
+    }
+
     /**
+     * Runs `composer <args>` in the temp project.
+     *
      * @return array{0:int,1:string}
      */
     private function composer(string $args): array
     {
-        $cmd = sprintf(
-            'COMPOSER_ROOT_VERSION=1.0.0 %s %s 2>&1',
-            escapeshellarg($this->composerBin),
-            $args,
-        );
+        return $this->shell(sprintf('COMPOSER_ROOT_VERSION=1.0.0 %s %s', escapeshellarg($this->composerBin), $args));
+    }
+
+    /**
+     * Runs an arbitrary shell command in the temp project's working directory.
+     *
+     * @return array{0:int,1:string}
+     */
+    private function shell(string $command): array
+    {
         $output = [];
         $code = 0;
         $cwd = getcwd();
         chdir($this->workdir);
-        exec($cmd, $output, $code);
+        exec($command . ' 2>&1', $output, $code);
         if ($cwd !== false) {
             chdir($cwd);
         }
