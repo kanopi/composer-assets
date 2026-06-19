@@ -28,4 +28,9 @@ final class SkipOp implements OperationInterface
     {
         return false;
     }
+
+    public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string
+    {
+        return null; // nothing is produced, so nothing can drift.
+    }
 }

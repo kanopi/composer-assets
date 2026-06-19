@@ -196,6 +196,93 @@ script event so you can chain follow-up steps:
 }
 ```
 
+## Drift detection
+
+Files the **project owns** are the ones that silently rot: once you keep a local
+copy (`"overwrite": false`) or merge a fragment into a tracked file
+(`force-append` / `force-merge`), later updates to the source in the package
+never reach it. Drift detection flags exactly that — when a destination on disk
+no longer matches what its providing package would produce.
+
+```bash
+composer assets:check
+```
+
+This is **read-only** — it writes nothing. For each owned file it prints a
+unified diff (`-` is what's on disk, `+` is what the package would produce):
+
+```
+composer-assets: 1 file(s) have drifted from their package source:
+
+web/robots.txt
+@@ -1,2 +1,2 @@
+ User-agent: *
+-Disallow: /admin
++Disallow: /private
+```
+
+In a color terminal the diff is highlighted (red for the on-disk lines, green
+for what the package would produce); piped or `--no-ansi` output stays plain.
+
+To check only specific files, pass their (project-relative) paths — the same
+keys used in `file-mapping`:
+
+```bash
+composer assets:check web/robots.txt web/.htaccess
+```
+
+A path that isn't a managed file is reported and skipped.
+
+It also runs automatically after `composer install` / `composer update`, where
+it is **warn-only** — drifted files are reported but the run never fails:
+
+```
+composer-assets: web/robots.txt has drifted from its package source (run "composer assets:check" for the diff).
+```
+
+### What is (and isn't) checked
+
+- **Checked:** `replace` with `"overwrite": false`, and `force-append` /
+  `force-merge` targets — the files the project owns.
+- **Not checked:** plain `replace` (overwrite:true) and symlinks (re-synced
+  every run, so they can't drift), `skip`, and `merge` with `"array": "concat"`
+  (not idempotent — a re-merge always differs, so drift can't be told apart from
+  normal operation).
+- A **missing** destination is reported as a "would create", not as drift.
+- `force-append` drift means *a run would add/change content*; because append is
+  additive it surfaces the divergence but can't remove a stale older fragment.
+
+### Failing the build (`fail-on-drift`)
+
+`composer assets:check` is warn-only by default (exit `0`). To make drift a hard
+failure — e.g. a CI guard that breaks the build when an owned file falls behind
+its package — set:
+
+```json
+{
+    "extra": {
+        "composer-assets": {
+            "fail-on-drift": true
+        }
+    }
+}
+```
+
+With this set, `composer assets:check` exits `1` when any file has drifted. The
+`--strict` flag forces the same behavior for a single run without changing
+config (`composer assets:check --strict`). Normal install/update runs stay
+warn-only regardless, so scaffolding never blocks a dependency install.
+
+### Silencing a file (`"drift": false`)
+
+To opt an individual owned file out of drift reporting — say a file you
+intentionally diverge from upstream — add `"drift": false` to its mapping
+(mirrors the `"gitignore"` override):
+
+```json
+"web/robots.txt": { "path": "assets/robots.txt", "overwrite": false, "drift": false }
+```
+
 ## How it compares to drupal/core-composer-scaffold
 
 | | drupal/core-composer-scaffold | kanopi/composer-assets |
@@ -207,6 +294,7 @@ script event so you can chain follow-up steps:
 | Post hook | `post-drupal-scaffold-cmd` | `post-composer-assets-cmd` |
 | Replace / append / skip | ✅ | ✅ |
 | Structured JSON/YAML merge | ❌ | ✅ |
+| Drift detection (`assets:check`) | ❌ | ✅ |
 | Symlink mode | ✅ | ✅ |
 | `.gitignore` management | ✅ | ✅ |
 | Allowed-packages + delegation | ✅ | ✅ |

@@ -10,6 +10,8 @@ use Composer\IO\IOInterface;
 use Composer\Package\PackageInterface;
 use Composer\Package\RootPackageInterface;
 use Composer\Util\ProcessExecutor;
+use Kanopi\Composer\Assets\Drift\Drift;
+use Kanopi\Composer\Assets\Drift\DriftChecker;
 use Kanopi\Composer\Assets\Operations\OperationFactory;
 
 /**
@@ -31,26 +33,8 @@ final class Handler
 
     public function run(bool $devMode = true): void
     {
-        $root = $this->composer->getPackage();
-        $rootOptions = $this->optionsFor($root);
-        $projectRoot = $this->projectRoot();
-
-        $allowed = (new AllowedPackages($this->composer, $this->io))->getAllowedPackages();
-
-        // Merge file-mappings in precedence order (later packages override).
-        /** @var array<string, AssetFileInfo> $mappings */
-        $mappings = [];
-        foreach ($allowed as $package) {
-            $options = $this->optionsFor($package);
-            if (!$options->hasFileMapping()) {
-                continue;
-            }
-            $factory = new OperationFactory($package->getName(), $this->installPath($package, $projectRoot));
-            foreach ($options->fileMapping() as $destination => $value) {
-                $dest = AssetFilePath::destination($projectRoot, (string) $destination);
-                $mappings[(string) $destination] = new AssetFileInfo($dest, $factory->create((string) $destination, $value));
-            }
-        }
+        $rootOptions = $this->optionsFor($this->composer->getPackage());
+        $mappings = $this->buildMappings();
 
         if ($mappings === []) {
             $this->io->write('<info>composer-assets: no file-mapping configured; nothing to do.</info>', true, IOInterface::VERBOSE);
@@ -68,9 +52,84 @@ final class Handler
             }
         }
 
-        $this->manageGitignore($rootOptions->gitignore(), $projectRoot, $managed);
+        $this->manageGitignore($rootOptions->gitignore(), $this->projectRoot(), $managed);
+
+        // Surface owned files that have drifted from their package source. This
+        // is warn-only here; "composer assets:check" reports the diffs and can
+        // fail when "fail-on-drift" is configured.
+        $this->warnOnDrift((new DriftChecker($this->io))->check($mappings, $rootOptions->symlink()));
 
         $this->composer->getEventDispatcher()->dispatchScript(self::POST_CMD, $devMode);
+    }
+
+    /**
+     * Detects drift for owned files without writing anything.
+     *
+     * @param list<string> $only limit to these destination paths; empty = all
+     * @return list<Drift>
+     */
+    public function checkDrift(array $only = []): array
+    {
+        $rootOptions = $this->optionsFor($this->composer->getPackage());
+
+        return (new DriftChecker($this->io))->check($this->buildMappings(), $rootOptions->symlink(), $only);
+    }
+
+    /**
+     * Whether the root project configured drift to be a hard failure.
+     */
+    public function failOnDrift(): bool
+    {
+        return $this->optionsFor($this->composer->getPackage())->failOnDrift();
+    }
+
+    /**
+     * Merges the file-mappings of every allowed package in precedence order
+     * (later packages override earlier ones for the same destination).
+     *
+     * @return array<string, AssetFileInfo>
+     */
+    private function buildMappings(): array
+    {
+        $projectRoot = $this->projectRoot();
+        $allowed = (new AllowedPackages($this->composer, $this->io))->getAllowedPackages();
+
+        $mappings = [];
+        foreach ($allowed as $package) {
+            $options = $this->optionsFor($package);
+            if (!$options->hasFileMapping()) {
+                continue;
+            }
+            $factory = new OperationFactory($package->getName(), $this->installPath($package, $projectRoot));
+            foreach ($options->fileMapping() as $destination => $value) {
+                $dest = AssetFilePath::destination($projectRoot, (string) $destination);
+                $driftCheck = true;
+                if (is_array($value) && array_key_exists('drift', $value)) {
+                    $driftCheck = (bool) $value['drift'];
+                }
+                $mappings[(string) $destination] = new AssetFileInfo(
+                    $dest,
+                    $factory->create((string) $destination, $value),
+                    $driftCheck,
+                );
+            }
+        }
+
+        return $mappings;
+    }
+
+    /**
+     * @param list<Drift> $drifts
+     */
+    private function warnOnDrift(array $drifts): void
+    {
+        foreach ($drifts as $drift) {
+            $this->io->writeError(sprintf(
+                '<warning>composer-assets: %s has drifted from its package source '
+                . '(run "composer assets:check" for the diff).</warning>',
+                $drift->label(),
+            ));
+        }
     }
 
     /**

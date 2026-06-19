@@ -22,6 +22,7 @@ final class AssetsOptions
         private readonly bool $symlink,
         private readonly ?bool $gitignore,
         private readonly array $allowedPackages,
+        private readonly bool $failOnDrift,
     ) {
     }
 
@@ -47,6 +48,7 @@ final class AssetsOptions
             (bool) ($extra['symlink'] ?? false),
             array_key_exists('gitignore', $extra) ? (bool) $extra['gitignore'] : null,
             array_values(array_map('strval', $allowed)),
+            (bool) ($extra['fail-on-drift'] ?? false),
         );
     }
 
@@ -82,5 +84,14 @@ final class AssetsOptions
     public function hasFileMapping(): bool
     {
         return $this->fileMapping !== [];
+    }
+
+    /**
+     * Whether drift should be treated as a failure (non-zero exit) by the
+     * `assets:check` command. Honored only on the root project.
+     */
+    public function failOnDrift(): bool
+    {
+        return $this->failOnDrift;
     }
 }

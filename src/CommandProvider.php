@@ -7,7 +7,7 @@ namespace Kanopi\Composer\Assets;
 use Composer\Plugin\Capability\CommandProvider as CommandProviderCapability;
 
 /**
- * Registers the `composer assets` command.
+ * Registers the `composer assets` and `composer assets:check` commands.
  */
 final class CommandProvider implements CommandProviderCapability
 {
@@ -16,6 +16,6 @@ final class CommandProvider implements CommandProviderCapability
      */
     public function getCommands(): array
     {
-        return [new AssetsCommand()];
+        return [new AssetsCommand(), new AssetsCheckCommand()];
     }
 }

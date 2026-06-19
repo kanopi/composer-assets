@@ -113,6 +113,37 @@ final class MergeOp implements OperationInterface
         return $this->managedDefault && !$this->forceMerge;
     }
 
+    public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string
+    {
+        // `concat` grows the destination on every run, so a re-merge always
+        // differs from disk — drift can't be told apart from normal operation.
+        if ($this->arrayStrategy === self::ARRAY_CONCAT) {
+            return null;
+        }
+
+        if (!$this->source->exists()) {
+            return null;
+        }
+
+        $exists = $current !== null;
+        if (!$exists && !$this->forceMerge && $this->default === null) {
+            return null; // a run wouldn't create it.
+        }
+
+        $format = $this->resolveFormat($destination->relativePath());
+
+        $base = [];
+        if ($exists) {
+            $base = $this->decode((string) $current, $format, $destination->fullPath());
+        } elseif ($this->default !== null && $this->default->exists()) {
+            $base = $this->decode((string) file_get_contents($this->default->fullPath()), $format, $this->default->fullPath());
+        }
+
+        $overlay = $this->decode((string) file_get_contents($this->source->fullPath()), $format, $this->source->fullPath());
+
+        return $this->encode(self::deepMerge($base, $overlay, $this->arrayStrategy), $format);
+    }
+
     /**
      * Recursively merges $overlay onto $base.
      *

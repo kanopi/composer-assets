@@ -93,6 +93,34 @@ final class AppendOp implements OperationInterface
         return $this->managedDefault && !$this->forceAppend;
     }
 
+    public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string
+    {
+        // Mirror process()'s computation without writing. Drift here means a run
+        // would add or change content (the managed fragment is missing/stale).
+        $body = $current;
+        if ($body === null && $this->default && $this->default->exists()) {
+            $body = (string) file_get_contents($this->default->fullPath());
+        }
+
+        if ($body === null && !$this->forceAppend) {
+            return null; // a run wouldn't touch a missing, unmanaged target.
+        }
+
+        $body ??= '';
+        $prependText = $this->read($this->prepend);
+        $appendText = $this->read($this->append);
+
+        // Idempotency guard: content already present is not re-added.
+        if ($prependText !== '' && str_contains($body, $prependText)) {
+            $prependText = '';
+        }
+        if ($appendText !== '' && str_contains($body, $appendText)) {
+            $appendText = '';
+        }
+
+        return $prependText . $body . $appendText;
+    }
+
     private function read(?AssetFilePath $path): string
     {
         if ($path === null) {

@@ -75,6 +75,21 @@ final class ReplaceOp implements OperationInterface
         return $this->gitignore ?? true;
     }
 
+    public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string
+    {
+        // `overwrite: true` is re-synced every run and symlinks track the source,
+        // so neither can drift — only an owned `overwrite: false` copy can.
+        if ($this->overwrite || ($this->symlink ?? $globalSymlink)) {
+            return null;
+        }
+
+        if (!$this->source->exists()) {
+            return null;
+        }
+
+        return (string) file_get_contents($this->source->fullPath());
+    }
+
     private function ensureDirectory(string $dir): void
     {
         if (!is_dir($dir) && !@mkdir($dir, 0777, true) && !is_dir($dir)) {

@@ -26,4 +26,17 @@ interface OperationInterface
      * the target is a tracked project file rather than a generated one.
      */
     public function isManagedFile(): bool;
+
+    /**
+     * The content a real run would settle the destination on, computed WITHOUT
+     * writing to disk — used for drift detection.
+     *
+     * Returns null when this operation owns no stable, checkable destination:
+     * a plain `overwrite: true` copy or a symlink (both re-synced every run, so
+     * they never drift), a skip, or a non-idempotent merge (`array: concat`,
+     * whose result grows on every run and would always read as drift).
+     *
+     * @param string|null $current the destination's current bytes, or null if absent
+     */
+    public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string;
 }

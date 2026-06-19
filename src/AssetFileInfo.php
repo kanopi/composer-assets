@@ -18,6 +18,7 @@ final class AssetFileInfo
     public function __construct(
         private readonly AssetFilePath $destination,
         private readonly OperationInterface $operation,
+        private readonly bool $driftCheck = true,
     ) {
     }
 
@@ -29,6 +30,15 @@ final class AssetFileInfo
     public function operation(): OperationInterface
     {
         return $this->operation;
+    }
+
+    /**
+     * Whether this mapping participates in drift detection. A per-file
+     * `"drift": false` opts a noisy owned file out of the report.
+     */
+    public function driftCheck(): bool
+    {
+        return $this->driftCheck;
     }
 
     /**
