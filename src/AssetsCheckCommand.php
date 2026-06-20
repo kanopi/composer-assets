@@ -35,12 +35,14 @@ final class AssetsCheckCommand extends BaseCommand
                 'Limit the check to these destination paths (project-relative, matching the file-mapping keys). Default: all owned files.',
             )
             ->addOption('strict', null, InputOption::VALUE_NONE, 'Exit non-zero if any file has drifted (overrides config).')
+            ->addOption('format', null, InputOption::VALUE_REQUIRED, 'Output format: "text" (default) or "json".', 'text')
             ->setHelp(
                 'Compares each owned destination file ("overwrite": false copies and '
                 . '"force-append"/"force-merge" targets) against what its package would '
                 . 'produce, printing a unified diff for each divergence. Does not modify '
                 . 'any files. Pass one or more paths to limit the report to those files, '
-                . 'e.g. "composer assets:check web/robots.txt". Exits non-zero when drift '
+                . 'e.g. "composer assets:check web/robots.txt". Use --format=json for '
+                . 'machine-readable output (CI/dashboards). Exits non-zero when drift '
                 . 'is found and either --strict is given or '
                 . '"extra.composer-assets.fail-on-drift" is true.',
             );
@@ -50,6 +52,13 @@ final class AssetsCheckCommand extends BaseCommand
     {
         $composer = $this->requireComposer();
         $io = $this->getIO();
+
+        $format = (string) $input->getOption('format');
+        if (!in_array($format, ['text', 'json'], true)) {
+            $io->writeError(sprintf('<error>composer-assets: unknown --format "%s" (use "text" or "json").</error>', $format));
+
+            return 1;
+        }
 
         /** @var list<string> $paths */
         $paths = (array) $input->getArgument('paths');
@@ -62,6 +71,22 @@ final class AssetsCheckCommand extends BaseCommand
             $io->writeError('<error>composer-assets: ' . $e->getMessage() . '</error>');
 
             return 1;
+        }
+
+        $fail = ($drifts !== []) && ($input->getOption('strict') || $handler->failOnDrift());
+
+        if ($format === 'json') {
+            $payload = [
+                'count' => count($drifts),
+                'failed' => $fail,
+                'drift' => array_map(
+                    static fn ($drift): array => ['path' => $drift->label(), 'diff' => $drift->diff()],
+                    $drifts,
+                ),
+            ];
+            $output->writeln((string) json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+            return $fail ? 1 : 0;
         }
 
         if ($drifts === []) {
@@ -79,8 +104,6 @@ final class AssetsCheckCommand extends BaseCommand
             $io->write(sprintf('<info>%s</info>', $drift->label()));
             $io->write(UnifiedDiff::colorize($drift->diff()));
         }
-
-        $fail = $input->getOption('strict') || $handler->failOnDrift();
 
         return $fail ? 1 : 0;
     }

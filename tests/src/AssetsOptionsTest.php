@@ -35,9 +35,25 @@ final class AssetsOptionsTest extends TestCase
         self::assertSame(['web/.htaccess' => 'assets/.htaccess'], $options->fileMapping());
     }
 
+    public function testModeDefaultsToNull(): void
+    {
+        self::assertNull(AssetsOptions::create([])->mode());
+    }
+
+    public function testReadsGlobalMode(): void
+    {
+        self::assertSame(0755, AssetsOptions::create(['mode' => '0755'])->mode());
+    }
+
     public function testInvalidFileMappingThrows(): void
     {
         $this->expectException(\InvalidArgumentException::class);
         AssetsOptions::create(['file-mapping' => 'nope']);
+    }
+
+    public function testInvalidModeThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        AssetsOptions::create(['mode' => 'not-octal']);
     }
 }

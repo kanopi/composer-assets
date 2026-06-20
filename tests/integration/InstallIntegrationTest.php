@@ -62,7 +62,8 @@ final class InstallIntegrationTest extends TestCase
                 'acme/assets-provider' => '*',
             ],
             'extra' => [
-                'composer-assets' => ['allowed-packages' => ['acme/assets-provider']],
+                // Global default mode applies to files without their own per-file "mode".
+                'composer-assets' => ['allowed-packages' => ['acme/assets-provider'], 'mode' => '0664'],
             ],
             'config' => ['allow-plugins' => ['kanopi/composer-assets' => true]],
         ];
@@ -92,7 +93,10 @@ final class InstallIntegrationTest extends TestCase
         // Replace: copied from the provider, with the configured permission mode.
         self::assertFileExists($this->workdir . '/web/.htaccess');
         self::assertStringEqualsFile($this->workdir . '/web/.htaccess', "Deny from all\n");
-        self::assertSame(0640, fileperms($this->workdir . '/web/.htaccess') & 0777, 'mode "0640" must be applied to the copied file.');
+        self::assertSame(0640, fileperms($this->workdir . '/web/.htaccess') & 0777, 'per-file mode "0640" overrides the global default.');
+
+        // Global default mode "0664" applies to a file without its own per-file mode.
+        self::assertSame(0664, fileperms($this->workdir . '/.circleci/config.yml') & 0777, 'global default mode must apply when a file sets no mode of its own.');
 
         // overwrite:false — the pre-existing file is untouched.
         self::assertStringEqualsFile($this->workdir . '/web/robots.txt', "KEEP ME\n");
@@ -179,6 +183,26 @@ final class InstallIntegrationTest extends TestCase
         self::assertSame(0, $checkCode, $checkOut);
         self::assertStringContainsString('web/robots.txt', $checkOut);
         self::assertStringContainsString('drifted', $checkOut);
+
+        // --format=json emits machine-readable drift.
+        [$jsonCode, $jsonOut] = $this->composer('assets:check --format=json --no-interaction');
+        self::assertSame(0, $jsonCode, $jsonOut);
+        $decoded = json_decode($jsonOut, true);
+        self::assertIsArray($decoded, "assets:check --format=json must emit valid JSON:\n" . $jsonOut);
+        self::assertGreaterThanOrEqual(1, $decoded['count']);
+        self::assertContains('web/robots.txt', array_column($decoded['drift'], 'path'));
+
+        // assets:status lists the file as drifted.
+        [$statusCode, $statusOut] = $this->composer('assets:status --no-interaction');
+        self::assertSame(0, $statusCode, $statusOut);
+        self::assertStringContainsString('web/robots.txt', $statusOut);
+        self::assertStringContainsString('drifted', $statusOut);
+
+        // assets:reapply --dry-run previews without writing.
+        [$rdCode, $rdOut] = $this->composer('assets:reapply --dry-run --no-interaction');
+        self::assertSame(0, $rdCode, $rdOut);
+        self::assertStringContainsString('would be reapplied', $rdOut);
+        self::assertStringEqualsFile($this->workdir . '/web/robots.txt', "KEEP ME\n", 'reapply --dry-run must not write.');
 
         // Dry run of a fresh scaffold: delete a replaced file, preview, assert
         // it is reported but NOT recreated.

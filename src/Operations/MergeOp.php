@@ -120,6 +120,11 @@ final class MergeOp implements OperationInterface
         return true;
     }
 
+    public function kind(): string
+    {
+        return 'merge';
+    }
+
     public function isManagedFile(): bool
     {
         if ($this->gitignore !== null) {

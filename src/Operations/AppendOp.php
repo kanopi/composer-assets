@@ -113,6 +113,11 @@ final class AppendOp implements OperationInterface
         return true;
     }
 
+    public function kind(): string
+    {
+        return 'append';
+    }
+
     public function isManagedFile(): bool
     {
         if ($this->gitignore !== null) {

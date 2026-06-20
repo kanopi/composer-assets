@@ -97,6 +97,11 @@ final class ReplaceOp implements OperationInterface
         return true;
     }
 
+    public function kind(): string
+    {
+        return 'replace';
+    }
+
     public function isManagedFile(): bool
     {
         // A replaced file is generated, so it is gitignored by default; a

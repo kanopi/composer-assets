@@ -23,6 +23,7 @@ final class AssetsOptions
         private readonly ?bool $gitignore,
         private readonly array $allowedPackages,
         private readonly bool $failOnDrift,
+        private readonly ?int $mode,
     ) {
     }
 
@@ -49,6 +50,7 @@ final class AssetsOptions
             array_key_exists('gitignore', $extra) ? (bool) $extra['gitignore'] : null,
             array_values(array_map('strval', $allowed)),
             (bool) ($extra['fail-on-drift'] ?? false),
+            FileMode::parse($extra['mode'] ?? null),
         );
     }
 
@@ -63,6 +65,15 @@ final class AssetsOptions
     public function symlink(): bool
     {
         return $this->symlink;
+    }
+
+    /**
+     * The global default permission mode applied to scaffolded files that don't
+     * declare their own per-file `"mode"`, or null when unset.
+     */
+    public function mode(): ?int
+    {
+        return $this->mode;
     }
 
     /**

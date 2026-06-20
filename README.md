@@ -143,6 +143,20 @@ read-only settings files:
   source, so a mode would be meaningless (and unsafe) there and is skipped.
 - The mode is **not** part of drift detection; only file *content* is compared.
 
+A **global default** can be set on the root project; it applies to every
+scaffolded file (including those from dependencies) that doesn't declare its own
+`"mode"`. A per-file `"mode"` always wins.
+
+```json
+{
+    "extra": {
+        "composer-assets": {
+            "mode": "0664"
+        }
+    }
+}
+```
+
 ### Structured merge (JSON / YAML)
 
 Where `append` is byte-level (great for `.htaccess`, plain text), `merge` parses
@@ -294,6 +308,24 @@ composer assets:check web/robots.txt web/.htaccess
 
 A path that isn't a managed file is reported and skipped.
 
+For CI and dashboards, `--format=json` emits machine-readable output instead of
+the diff text — `count`, whether the run `failed` (per `--strict` /
+`fail-on-drift`), and a `drift` array of `{ path, diff }`:
+
+```bash
+composer assets:check --format=json
+```
+
+```json
+{
+    "count": 1,
+    "failed": false,
+    "drift": [
+        { "path": "web/robots.txt", "diff": "@@ -1,2 +1,2 @@\n User-agent: *\n-Disallow: /admin\n+Disallow: /private\n" }
+    ]
+}
+```
+
 It also runs automatically after `composer install` / `composer update`, where
 it is **warn-only** — drifted files are reported but the run never fails:
 
@@ -317,7 +349,11 @@ file** (default is *no*). Pass paths to limit it to specific files, and `--yes`
 ```bash
 composer assets:reapply web/robots.txt        # one file, with confirmation
 composer assets:reapply --yes                 # all drifted files, no prompts
+composer assets:reapply --dry-run             # preview only; writes nothing
 ```
+
+`--dry-run` shows the diffs and which files *would* be re-applied without
+prompting or writing anything.
 
 > [!WARNING]
 > This **overwrites local edits** to owned files (`"overwrite": false` copies and
@@ -374,6 +410,29 @@ intentionally diverge from upstream — add `"drift": false` to its mapping
 "web/robots.txt": { "path": "assets/robots.txt", "overwrite": false, "drift": false }
 ```
 
+## Inventory (`assets:status`)
+
+For a quick overview of everything the plugin manages, `composer assets:status`
+prints a table of each destination, the package that provides it, the operation,
+and its current state (`in sync`, `drifted`, `missing`, or `skipped`):
+
+```bash
+composer assets:status
+```
+
+```
+File                        Provider              Operation  State
+--------------------------  --------------------  ---------  -----
+.circleci/config.yml        acme/site-recipe      replace    in sync
+web/.htaccess               acme/site-recipe      replace    missing
+web/robots.txt              acme/site-recipe      replace    drifted
+web/skip-me.txt             acme/site-recipe      skip       skipped
+
+composer-assets: 4 managed file(s) (1 drifted, 1 in sync, 1 missing, 1 skipped).
+```
+
+Read-only. Pass paths to limit the listing to specific files.
+
 ## How it compares to drupal/core-composer-scaffold
 
 | | drupal/core-composer-scaffold | kanopi/composer-assets |
@@ -385,10 +444,11 @@ intentionally diverge from upstream — add `"drift": false` to its mapping
 | Post hook | `post-drupal-scaffold-cmd` | `post-composer-assets-cmd` |
 | Replace / append / skip | ✅ | ✅ |
 | Structured JSON/YAML merge | ❌ | ✅ |
-| Drift detection (`assets:check`) | ❌ | ✅ |
+| Drift detection (`assets:check`, `--format=json`) | ❌ | ✅ |
 | Drift resolution (`assets:reapply`) | ❌ | ✅ |
-| Dry-run preview (`assets --dry-run`) | ❌ | ✅ |
-| Per-file permissions (`mode`) | ❌ | ✅ |
+| Status inventory (`assets:status`) | ❌ | ✅ |
+| Dry-run preview (`assets`/`assets:reapply --dry-run`) | ❌ | ✅ |
+| Per-file + global permissions (`mode`) | ❌ | ✅ |
 | Directory / glob mappings | ❌ | ✅ |
 | Symlink mode | ✅ | ✅ |
 | `.gitignore` management | ✅ | ✅ |

@@ -24,6 +24,11 @@ final class SkipOp implements OperationInterface
         return false;
     }
 
+    public function kind(): string
+    {
+        return 'skip';
+    }
+
     public function isManagedFile(): bool
     {
         return false;

@@ -108,6 +108,21 @@ final class OperationFactoryTest extends TestCase
         $this->factory()->create('dest', ['path' => 'assets/file', 'mode' => 'rwxr-xr-x']);
     }
 
+    public function testGlobalDefaultModeAppliesWhenNoPerFileMode(): void
+    {
+        $factory = new OperationFactory('vendor/pkg', '/tmp/pkg', 0640);
+        $op = $factory->create('dest', ['path' => 'assets/file']);
+        self::assertInstanceOf(ReplaceOp::class, $op);
+        self::assertSame(0640, $op->mode());
+    }
+
+    public function testPerFileModeOverridesGlobalDefault(): void
+    {
+        $factory = new OperationFactory('vendor/pkg', '/tmp/pkg', 0640);
+        $op = $factory->create('dest', ['path' => 'assets/file', 'mode' => '0755']);
+        self::assertSame(0755, $op->mode());
+    }
+
     public function testInvalidScalarThrows(): void
     {
         $this->expectException(\InvalidArgumentException::class);

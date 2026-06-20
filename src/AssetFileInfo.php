@@ -19,6 +19,7 @@ final class AssetFileInfo
         private readonly AssetFilePath $destination,
         private readonly OperationInterface $operation,
         private readonly bool $driftCheck = true,
+        private readonly string $provider = '',
     ) {
     }
 
@@ -30,6 +31,14 @@ final class AssetFileInfo
     public function operation(): OperationInterface
     {
         return $this->operation;
+    }
+
+    /**
+     * Name of the package that contributed this mapping (empty for the root).
+     */
+    public function provider(): string
+    {
+        return $this->provider;
     }
 
     /**

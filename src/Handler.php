@@ -93,6 +93,64 @@ final class Handler
     }
 
     /**
+     * Reports every managed file with its provider, operation, and current state
+     * ("in sync" / "drifted" / "missing" / "skipped"). Read-only.
+     *
+     * @param list<string> $only limit to these destination paths; empty = all
+     * @return list<array{path: string, provider: string, operation: string, state: string}>
+     */
+    public function status(array $only = []): array
+    {
+        $rootOptions = $this->optionsFor($this->composer->getPackage());
+        $mappings = $this->buildMappings();
+
+        if ($only !== []) {
+            foreach ($only as $path) {
+                if (!array_key_exists($path, $mappings)) {
+                    $this->io->writeError(sprintf(
+                        '<warning>composer-assets: "%s" is not a managed file; skipping.</warning>',
+                        $path,
+                    ));
+                }
+            }
+        }
+
+        $drifted = [];
+        foreach ((new DriftChecker($this->io))->check($mappings, $rootOptions->symlink()) as $drift) {
+            $drifted[$drift->label()] = true;
+        }
+
+        $rows = [];
+        foreach ($mappings as $path => $info) {
+            $path = (string) $path;
+            if ($only !== [] && !in_array($path, $only, true)) {
+                continue;
+            }
+            $kind = $info->operation()->kind();
+            $rows[] = [
+                'path' => $path,
+                'provider' => $info->provider() !== '' ? $info->provider() : '(root)',
+                'operation' => $kind,
+                'state' => $this->stateFor($kind, $info->destination()->exists(), isset($drifted[$path])),
+            ];
+        }
+
+        return $rows;
+    }
+
+    private function stateFor(string $kind, bool $exists, bool $drifted): string
+    {
+        if ($kind === 'skip') {
+            return 'skipped';
+        }
+        if (!$exists) {
+            return 'missing';
+        }
+
+        return $drifted ? 'drifted' : 'in sync';
+    }
+
+    /**
      * Merges the file-mappings of every allowed package in precedence order
      * (later packages override earlier ones for the same destination).
      *
@@ -101,6 +159,7 @@ final class Handler
     private function buildMappings(): array
     {
         $projectRoot = $this->projectRoot();
+        $globalMode = $this->optionsFor($this->composer->getPackage())->mode();
         $allowed = (new AllowedPackages($this->composer, $this->io))->getAllowedPackages();
 
         $mappings = [];
@@ -110,7 +169,7 @@ final class Handler
                 continue;
             }
             $packageRoot = $this->installPath($package, $projectRoot);
-            $factory = new OperationFactory($package->getName(), $packageRoot);
+            $factory = new OperationFactory($package->getName(), $packageRoot, $globalMode);
             $expanded = (new MappingExpander($this->io))->expand($options->fileMapping(), $packageRoot);
             foreach ($expanded as $destination => $value) {
                 $dest = AssetFilePath::destination($projectRoot, (string) $destination);
@@ -122,6 +181,7 @@ final class Handler
                     $dest,
                     $factory->create((string) $destination, $value),
                     $driftCheck,
+                    $package->getName(),
                 );
             }
         }

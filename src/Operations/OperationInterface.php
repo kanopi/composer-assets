@@ -24,6 +24,12 @@ interface OperationInterface
     public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool;
 
     /**
+     * A short label for the operation kind: "replace", "append", "merge", or
+     * "skip". Used by reporting commands (e.g. `assets:status`).
+     */
+    public function kind(): string;
+
+    /**
      * Whether this operation contributes a file that should be gitignored.
      *
      * Append operations against pre-existing (non-scaffolded) files do not, as

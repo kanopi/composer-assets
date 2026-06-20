@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kanopi\Composer\Assets\Operations;
 
 use Kanopi\Composer\Assets\AssetFilePath;
+use Kanopi\Composer\Assets\FileMode;
 
 /**
  * Normalizes a raw `file-mapping` value into a concrete Operation.
@@ -24,6 +25,7 @@ final class OperationFactory
     public function __construct(
         private readonly string $packageName,
         private readonly string $packageRoot,
+        private readonly ?int $defaultMode = null,
     ) {
     }
 
@@ -50,8 +52,8 @@ final class OperationFactory
         // Optional per-file gitignore override (null = default behavior).
         $gitignore = array_key_exists('gitignore', $value) ? (bool) $value['gitignore'] : null;
 
-        // Optional per-file permission mode (null = leave the filesystem default).
-        $mode = self::parseMode($destination, $value);
+        // Effective permission mode: per-file "mode", else the global default.
+        $mode = $this->mode($destination, $value);
 
         // Structured merge mode (JSON/YAML).
         if (isset($value['merge'])) {
@@ -103,31 +105,21 @@ final class OperationFactory
     }
 
     /**
-     * Parses a per-file "mode" into a chmod-ready integer.
-     *
-     * Accepts an octal string ("0755", "755", "0o755") or a JSON number whose
-     * digits are read as octal (755 => 0755). Returns null when unset.
+     * Resolves a mapping's effective mode: its per-file `"mode"` if present,
+     * otherwise the global default passed to this factory.
      *
      * @param array<string, mixed> $value
      */
-    private static function parseMode(string $destination, array $value): ?int
+    private function mode(string $destination, array $value): ?int
     {
         if (!array_key_exists('mode', $value) || $value['mode'] === null) {
-            return null;
+            return $this->defaultMode;
         }
 
-        $raw = $value['mode'];
-        $digits = is_int($raw) ? (string) $raw : (is_string($raw) ? $raw : '');
-        $digits = preg_replace('/^0o/i', '', $digits) ?? '';
-
-        if ($digits === '' || preg_match('/^[0-7]{3,4}$/', $digits) !== 1) {
-            throw new \InvalidArgumentException(sprintf(
-                'Invalid "mode" for "%s": expected an octal string like "0755", got %s.',
-                $destination,
-                var_export($raw, true),
-            ));
+        try {
+            return FileMode::parse($value['mode']);
+        } catch (\InvalidArgumentException $e) {
+            throw new \InvalidArgumentException(sprintf('mode for "%s": %s', $destination, $e->getMessage()), 0, $e);
         }
-
-        return (int) octdec($digits);
     }
 }

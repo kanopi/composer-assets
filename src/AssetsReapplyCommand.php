@@ -40,15 +40,16 @@ final class AssetsReapplyCommand extends BaseCommand
                 'Limit the re-apply to these destination paths (project-relative, matching the file-mapping keys). Default: all drifted files.',
             )
             ->addOption('yes', 'y', InputOption::VALUE_NONE, 'Apply every change without prompting for confirmation.')
+            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Show what would be re-applied without writing or prompting.')
             ->setHelp(
                 'Resolves drift reported by "composer assets:check" by overwriting each '
                 . 'owned destination file ("overwrite": false copies and '
                 . '"force-append"/"force-merge" targets) with what its package would '
                 . 'produce. Shows the diff for each file and asks before writing; pass '
-                . '--yes (-y) to accept all without prompting, or one or more paths to '
-                . 'limit which files are re-applied, e.g. '
-                . '"composer assets:reapply web/robots.txt". Missing files are not created '
-                . 'here — run "composer assets" for that.',
+                . '--yes (-y) to accept all without prompting, --dry-run to preview '
+                . 'without writing, or one or more paths to limit which files are '
+                . 're-applied, e.g. "composer assets:reapply web/robots.txt". Missing '
+                . 'files are not created here — run "composer assets" for that.',
             );
     }
 
@@ -76,7 +77,11 @@ final class AssetsReapplyCommand extends BaseCommand
         }
 
         $assumeYes = (bool) $input->getOption('yes');
+        $dryRun = (bool) $input->getOption('dry-run');
 
+        if ($dryRun) {
+            $io->write('<comment>composer-assets: dry run — no files will be written.</comment>');
+        }
         $io->write(sprintf(
             '<comment>composer-assets: %d file(s) have drifted from their package source:</comment>',
             count($drifts),
@@ -87,6 +92,13 @@ final class AssetsReapplyCommand extends BaseCommand
             $io->write('');
             $io->write(sprintf('<info>%s</info>', $drift->label()));
             $io->write(UnifiedDiff::colorize($drift->diff()));
+
+            if ($dryRun) {
+                $io->write(sprintf('  - Would reapply <info>%s</info>.', $drift->label()));
+                $applied++;
+
+                continue;
+            }
 
             if (!$assumeYes && !$io->askConfirmation(sprintf('  Overwrite %s? [y/N] ', $drift->label()), false)) {
                 $io->write('  - <comment>Skipped.</comment>');
@@ -106,7 +118,9 @@ final class AssetsReapplyCommand extends BaseCommand
 
         $io->write('');
         $io->write(sprintf(
-            '<info>composer-assets: reapplied %d of %d file(s).</info>',
+            $dryRun
+                ? '<info>composer-assets: %d of %d file(s) would be reapplied (dry run; nothing written).</info>'
+                : '<info>composer-assets: reapplied %d of %d file(s).</info>',
             $applied,
             count($drifts),
         ));
