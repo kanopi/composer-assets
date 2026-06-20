@@ -82,7 +82,7 @@ final class DriftChecker
                 continue;
             }
 
-            $drifts[] = new Drift($destination->relativePath(), $current, $expected);
+            $drifts[] = new Drift($destination->relativePath(), $destination->fullPath(), $current, $expected);
         }
 
         return $drifts;

@@ -13,7 +13,7 @@ use Kanopi\Composer\Assets\AssetFilePath;
  */
 final class SkipOp implements OperationInterface
 {
-    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink): bool
+    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool
     {
         $io->write(
             sprintf('  - Skip <info>%s</info>: disabled', $destination->relativePath()),

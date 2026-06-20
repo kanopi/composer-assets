@@ -90,6 +90,17 @@ final class ReplaceOpTest extends TempDirTestCase
         self::assertSame('<?php // index', $this->projectContents('web/index.php'));
     }
 
+    public function testDryRunReportsButDoesNotWrite(): void
+    {
+        $this->writePackageFile('assets/htaccess', 'DENY ALL');
+        $op = new ReplaceOp($this->src('assets/htaccess'));
+
+        $changed = $op->process($this->dest('web/.htaccess'), new NullIO(), false, true);
+
+        self::assertTrue($changed, 'A dry run still reports that it would change the file.');
+        self::assertFileDoesNotExist($this->root . '/web/.htaccess');
+    }
+
     public function testPerFileSymlinkOverridesGlobal(): void
     {
         $this->writePackageFile('assets/index', 'data');

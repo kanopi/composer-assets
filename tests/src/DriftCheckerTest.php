@@ -165,6 +165,32 @@ final class DriftCheckerTest extends TempDirTestCase
         self::assertStringContainsString('not a managed file', $io->getOutput());
     }
 
+    public function testDriftCarriesFullPath(): void
+    {
+        $this->writePackageFile('assets/robots', "NEW\n");
+        $this->writeProjectFile('robots.txt', "OLD\n");
+        $info = new AssetFileInfo($this->dest('robots.txt'), new ReplaceOp($this->src('assets/robots'), overwrite: false));
+
+        $drifts = $this->check([$info]);
+
+        self::assertCount(1, $drifts);
+        self::assertSame($this->root . '/robots.txt', $drifts[0]->fullPath());
+    }
+
+    public function testApplyResolvesDrift(): void
+    {
+        $this->writePackageFile('assets/robots', "NEW\n");
+        $this->writeProjectFile('robots.txt', "OLD\n");
+        $info = new AssetFileInfo($this->dest('robots.txt'), new ReplaceOp($this->src('assets/robots'), overwrite: false));
+
+        $drifts = $this->check([$info]);
+        self::assertTrue($drifts[0]->apply());
+
+        // The file now matches the package source, and a re-check finds no drift.
+        self::assertSame("NEW\n", $this->projectContents('robots.txt'));
+        self::assertSame([], $this->check([$info]));
+    }
+
     public function testMergeConcatIsNotChecked(): void
     {
         // concat is not idempotent, so it cannot be reliably drift-checked.

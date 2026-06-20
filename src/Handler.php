@@ -31,7 +31,7 @@ final class Handler
     ) {
     }
 
-    public function run(bool $devMode = true): void
+    public function run(bool $devMode = true, bool $dryRun = false): void
     {
         $rootOptions = $this->optionsFor($this->composer->getPackage());
         $mappings = $this->buildMappings();
@@ -42,24 +42,33 @@ final class Handler
             return;
         }
 
+        if ($dryRun) {
+            $this->io->write('<comment>composer-assets: dry run — no files will be written.</comment>');
+        }
         $this->io->write('<info>Scaffolding asset files</info>');
 
         /** @var list<AssetFilePath> $managed */
         $managed = [];
         foreach ($mappings as $info) {
-            if ($info->process($this->io, $rootOptions->symlink())) {
+            if ($info->process($this->io, $rootOptions->symlink(), $dryRun)) {
                 $managed[] = $info->destination();
             }
         }
 
-        $this->manageGitignore($rootOptions->gitignore(), $this->projectRoot(), $managed);
+        // A dry run reports planned operations only: skip the .gitignore writes
+        // and the post-run script event, both of which mutate state.
+        if (!$dryRun) {
+            $this->manageGitignore($rootOptions->gitignore(), $this->projectRoot(), $managed);
+        }
 
         // Surface owned files that have drifted from their package source. This
         // is warn-only here; "composer assets:check" reports the diffs and can
         // fail when "fail-on-drift" is configured.
         $this->warnOnDrift((new DriftChecker($this->io))->check($mappings, $rootOptions->symlink()));
 
-        $this->composer->getEventDispatcher()->dispatchScript(self::POST_CMD, $devMode);
+        if (!$dryRun) {
+            $this->composer->getEventDispatcher()->dispatchScript(self::POST_CMD, $devMode);
+        }
     }
 
     /**

@@ -131,6 +131,70 @@ final class InstallIntegrationTest extends TestCase
         self::assertSame(['composer install'], $tugboat2['services']['php']['commands']['build'], 'merge must not grow list on re-run.');
     }
 
+    public function testDryRunPreviewsAndReapplyResolvesDrift(): void
+    {
+        $providerPath = $this->pluginRoot . '/tests/fixtures/provider';
+        $project = [
+            'name' => 'acme/site',
+            'type' => 'project',
+            'minimum-stability' => 'dev',
+            'prefer-stable' => true,
+            'repositories' => [
+                ['type' => 'path', 'url' => $this->pluginRoot, 'options' => ['symlink' => false]],
+                ['type' => 'path', 'url' => $providerPath, 'options' => ['symlink' => false]],
+            ],
+            'require' => [
+                'kanopi/composer-assets' => '*',
+                'acme/assets-provider' => '*',
+            ],
+            'extra' => [
+                'composer-assets' => ['allowed-packages' => ['acme/assets-provider']],
+            ],
+            'config' => ['allow-plugins' => ['kanopi/composer-assets' => true]],
+        ];
+        file_put_contents(
+            $this->workdir . '/composer.json',
+            (string) json_encode($project, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        );
+
+        // A pre-existing overwrite:false file that differs from the provider's
+        // source: an owned file that drifts.
+        file_put_contents($this->workdir . '/web/robots.txt', "KEEP ME\n");
+        // Structured files the merge ops need so install doesn't error.
+        file_put_contents($this->workdir . '/package.json', '{}');
+        mkdir($this->workdir . '/.tugboat', 0777, true);
+        file_put_contents($this->workdir . '/.tugboat/config.yml', "services: {}\n");
+
+        [$code, $output] = $this->composer('install --no-interaction');
+        self::assertSame(0, $code, "composer install failed:\n" . $output);
+
+        // The owned file kept its local content and so has drifted.
+        self::assertStringEqualsFile($this->workdir . '/web/robots.txt', "KEEP ME\n");
+        [$checkCode, $checkOut] = $this->composer('assets:check --no-interaction');
+        self::assertSame(0, $checkCode, $checkOut);
+        self::assertStringContainsString('web/robots.txt', $checkOut);
+        self::assertStringContainsString('drifted', $checkOut);
+
+        // Dry run of a fresh scaffold: delete a replaced file, preview, assert
+        // it is reported but NOT recreated.
+        unlink($this->workdir . '/web/.htaccess');
+        [$dryCode, $dryOut] = $this->composer('assets --dry-run --no-interaction');
+        self::assertSame(0, $dryCode, $dryOut);
+        self::assertStringContainsString('dry run', $dryOut);
+        self::assertStringContainsString('Would copy', $dryOut);
+        self::assertFileDoesNotExist($this->workdir . '/web/.htaccess', 'dry run must not write files.');
+
+        // Reapply resolves the drift by overwriting with the provider source.
+        [$reCode, $reOut] = $this->composer('assets:reapply web/robots.txt --yes --no-interaction');
+        self::assertSame(0, $reCode, "composer assets:reapply failed:\n" . $reOut);
+        self::assertStringContainsString('reapplied 1 of 1', $reOut);
+        self::assertStringEqualsFile($this->workdir . '/web/robots.txt', "User-agent: *\nDisallow:\n");
+
+        // Drift is now gone.
+        [, $checkOut2] = $this->composer('assets:check --no-interaction');
+        self::assertStringContainsString('no drift detected', $checkOut2);
+    }
+
     public function testGitignoreManagementTracksOptedOutFiles(): void
     {
         if (!$this->commandExists('git')) {

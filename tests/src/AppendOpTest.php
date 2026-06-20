@@ -66,6 +66,30 @@ final class AppendOpTest extends TempDirTestCase
         self::assertFalse($op->isManagedFile());
     }
 
+    public function testDryRunReportsButDoesNotWrite(): void
+    {
+        $this->writeProjectFile('.htaccess', "ORIGINAL\n");
+        $this->writePackageFile('tail', "EXTRA\n");
+        $op = new AppendOp(append: $this->src('tail'), forceAppend: true);
+
+        $changed = $op->process($this->dest('.htaccess'), new NullIO(), false, true);
+
+        self::assertTrue($changed, 'A dry run still reports that it would change the file.');
+        self::assertSame("ORIGINAL\n", $this->projectContents('.htaccess'), 'Dry run must not modify the file.');
+    }
+
+    public function testDryRunDoesNotLayDownDefault(): void
+    {
+        $this->writePackageFile('default', "BODY\n");
+        $this->writePackageFile('tail', "FOOTER\n");
+        $op = new AppendOp(append: $this->src('tail'), default: $this->src('default'), managedDefault: true);
+
+        $changed = $op->process($this->dest('settings.php'), new NullIO(), false, true);
+
+        self::assertTrue($changed);
+        self::assertFileDoesNotExist($this->root . '/settings.php', 'Dry run must not create the default.');
+    }
+
     public function testIsIdempotent(): void
     {
         $this->writeProjectFile('.htaccess', "ORIGINAL\n");

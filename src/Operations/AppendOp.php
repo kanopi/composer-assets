@@ -31,15 +31,21 @@ final class AppendOp implements OperationInterface
     ) {
     }
 
-    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink): bool
+    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool
     {
         $destPath = $destination->fullPath();
         $label = $destination->relativePath();
         $exists = file_exists($destPath);
 
+        // A missing destination with a default available is laid down first; in a
+        // dry run we only read the default's bytes (for the body) without writing.
+        $defaultBody = null;
         if (!$exists && $this->default && $this->default->exists()) {
-            $this->ensureDirectory(dirname($destPath));
-            file_put_contents($destPath, (string) file_get_contents($this->default->fullPath()));
+            $defaultBody = (string) file_get_contents($this->default->fullPath());
+            if (!$dryRun) {
+                $this->ensureDirectory(dirname($destPath));
+                file_put_contents($destPath, $defaultBody);
+            }
             $exists = true;
         }
 
@@ -53,7 +59,13 @@ final class AppendOp implements OperationInterface
             return false;
         }
 
-        $body = $exists ? (string) file_get_contents($destPath) : '';
+        if ($defaultBody !== null) {
+            $body = $defaultBody;
+        } elseif (file_exists($destPath)) {
+            $body = (string) file_get_contents($destPath);
+        } else {
+            $body = '';
+        }
         $prependText = $this->read($this->prepend);
         $appendText = $this->read($this->append);
 
@@ -73,6 +85,12 @@ final class AppendOp implements OperationInterface
             );
 
             return false;
+        }
+
+        if ($dryRun) {
+            $io->write(sprintf('  - Would append/prepend <info>%s</info>', $label));
+
+            return true;
         }
 
         $this->ensureDirectory(dirname($destPath));

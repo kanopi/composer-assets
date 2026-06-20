@@ -15,9 +15,13 @@ interface OperationInterface
     /**
      * Performs the operation, writing to $destination on disk.
      *
-     * @return bool true if the destination file was written/changed.
+     * When $dryRun is true the operation computes and reports what it *would*
+     * do but performs no filesystem writes; the return value still reflects
+     * whether a real run would have changed the destination.
+     *
+     * @return bool true if the destination file was (or would be) written/changed.
      */
-    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink): bool;
+    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool;
 
     /**
      * Whether this operation contributes a file that should be gitignored.

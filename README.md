@@ -185,6 +185,15 @@ demand:
 composer assets
 ```
 
+To preview a run without changing anything, pass `--dry-run`: every operation is
+reported (`Would copy`, `Would append/prepend`, `Would merge …`) but no files are
+written, `.gitignore` is left untouched, and the `post-composer-assets-cmd` script
+is not dispatched.
+
+```bash
+composer assets --dry-run
+```
+
 After scaffolding completes, the plugin dispatches a **`post-composer-assets-cmd`**
 script event so you can chain follow-up steps:
 
@@ -239,6 +248,36 @@ it is **warn-only** — drifted files are reported but the run never fails:
 ```
 composer-assets: web/robots.txt has drifted from its package source (run "composer assets:check" for the diff).
 ```
+
+### Resolving drift (`assets:reapply`)
+
+Where `assets:check` only reports drift, `assets:reapply` **resolves** it by
+overwriting each drifted owned file with the content its package would produce:
+
+```bash
+composer assets:reapply
+```
+
+It shows the same diff as `assets:check` and then **asks before writing each
+file** (default is *no*). Pass paths to limit it to specific files, and `--yes`
+(`-y`) to accept every change without prompting — e.g. in a scripted update:
+
+```bash
+composer assets:reapply web/robots.txt        # one file, with confirmation
+composer assets:reapply --yes                 # all drifted files, no prompts
+```
+
+> [!WARNING]
+> This **overwrites local edits** to owned files (`"overwrite": false` copies and
+> `force-append` / `force-merge` targets) with the package source. For a
+> `force-append` target the package content is re-applied additively, so a stale
+> older fragment may remain.
+
+Only files that have **drifted** are touched. A file that is merely *missing* is
+not created here (drift detection treats a missing destination as a "would
+create") — run `composer assets` to scaffold those. To permanently exempt a file
+you intentionally diverge, use `"drift": false` (below), which also hides it from
+`assets:reapply`.
 
 ### What is (and isn't) checked
 
@@ -295,6 +334,8 @@ intentionally diverge from upstream — add `"drift": false` to its mapping
 | Replace / append / skip | ✅ | ✅ |
 | Structured JSON/YAML merge | ❌ | ✅ |
 | Drift detection (`assets:check`) | ❌ | ✅ |
+| Drift resolution (`assets:reapply`) | ❌ | ✅ |
+| Dry-run preview (`assets --dry-run`) | ❌ | ✅ |
 | Symlink mode | ✅ | ✅ |
 | `.gitignore` management | ✅ | ✅ |
 | Allowed-packages + delegation | ✅ | ✅ |

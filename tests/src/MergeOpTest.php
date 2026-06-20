@@ -109,6 +109,18 @@ final class MergeOpTest extends TempDirTestCase
         self::assertTrue($op->isManagedFile());
     }
 
+    public function testDryRunReportsButDoesNotWrite(): void
+    {
+        $this->writeProjectFile('package.json', json_encode(['name' => 'site']));
+        $this->writePackageFile('frag.json', json_encode(['private' => true]));
+        $op = new MergeOp($this->src('frag.json'), forceMerge: true);
+
+        $changed = $op->process($this->dest('package.json'), new NullIO(), false, true);
+
+        self::assertTrue($changed, 'A dry run still reports that it would change the file.');
+        self::assertSame(['name' => 'site'], json_decode($this->projectContents('package.json'), true), 'Dry run must not modify the file.');
+    }
+
     public function testSkipsWhenMissingAndNoDefaultOrForce(): void
     {
         $this->writePackageFile('frag.json', json_encode(['a' => 1]));

@@ -47,7 +47,7 @@ final class MergeOp implements OperationInterface
         }
     }
 
-    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink): bool
+    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool
     {
         $destPath = $destination->fullPath();
         $label = $destination->relativePath();
@@ -93,6 +93,12 @@ final class MergeOp implements OperationInterface
             $io->write(sprintf('  - Skip merge <info>%s</info>: no changes', $label), true, IOInterface::VERBOSE);
 
             return false;
+        }
+
+        if ($dryRun) {
+            $io->write(sprintf('  - Would merge <info>%s</info> (%s) from <comment>%s</comment>', $label, $format, $this->source->packageName() ?: 'root'));
+
+            return true;
         }
 
         $this->ensureDirectory(dirname($destPath));

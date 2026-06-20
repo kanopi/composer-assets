@@ -42,12 +42,12 @@ final class AssetFileInfo
     }
 
     /**
-     * Runs the operation. Returns true when a managed file was written (and
-     * thus is a candidate for gitignore management).
+     * Runs the operation. Returns true when a managed file was (or, under
+     * $dryRun, would be) written — i.e. a candidate for gitignore management.
      */
-    public function process(IOInterface $io, bool $globalSymlink): bool
+    public function process(IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool
     {
-        $changed = $this->operation->process($this->destination, $io, $globalSymlink);
+        $changed = $this->operation->process($this->destination, $io, $globalSymlink, $dryRun);
 
         return $changed && $this->operation->isManagedFile();
     }

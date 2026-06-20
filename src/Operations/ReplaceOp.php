@@ -23,7 +23,7 @@ final class ReplaceOp implements OperationInterface
     ) {
     }
 
-    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink): bool
+    public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool
     {
         $destPath = $destination->fullPath();
         $label = $destination->relativePath();
@@ -46,6 +46,19 @@ final class ReplaceOp implements OperationInterface
             return false;
         }
 
+        $useSymlink = $this->symlink ?? $globalSymlink;
+
+        if ($dryRun) {
+            $io->write(sprintf(
+                '  - Would %s <info>%s</info> from <comment>%s</comment>',
+                $useSymlink ? 'symlink' : 'copy',
+                $label,
+                $this->source->packageName() ?: 'root',
+            ));
+
+            return true;
+        }
+
         $this->ensureDirectory(dirname($destPath));
 
         // Clear any existing file/symlink so copy and symlink both behave.
@@ -53,7 +66,6 @@ final class ReplaceOp implements OperationInterface
             @unlink($destPath);
         }
 
-        $useSymlink = $this->symlink ?? $globalSymlink;
         if ($useSymlink) {
             $this->symlinkFile($this->source->fullPath(), $destPath);
             $io->write(sprintf('  - Symlink <info>%s</info> from <comment>%s</comment>', $label, $this->source->packageName() ?: 'root'));

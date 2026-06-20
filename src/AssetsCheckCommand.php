@@ -22,6 +22,8 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class AssetsCheckCommand extends BaseCommand
 {
+    use NormalizesPaths;
+
     protected function configure(): void
     {
         $this
@@ -81,20 +83,6 @@ final class AssetsCheckCommand extends BaseCommand
         $fail = $input->getOption('strict') || $handler->failOnDrift();
 
         return $fail ? 1 : 0;
-    }
-
-    /**
-     * Normalizes a user-supplied path to the project-relative form used as
-     * file-mapping keys: forward slashes, no leading "./" or "/".
-     */
-    private static function normalizePath(string $path): string
-    {
-        $path = str_replace('\\', '/', $path);
-        if (str_starts_with($path, './')) {
-            $path = substr($path, 2);
-        }
-
-        return ltrim($path, '/');
     }
 }
 
