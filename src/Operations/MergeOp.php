@@ -136,6 +136,11 @@ final class MergeOp implements OperationInterface
         return $this->managedDefault && !$this->forceMerge;
     }
 
+    public function gitignoreIntent(): ?bool
+    {
+        return $this->gitignore;
+    }
+
     public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string
     {
         // `concat` grows the destination on every run, so a re-merge always

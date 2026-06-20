@@ -63,7 +63,16 @@ final class InstallIntegrationTest extends TestCase
             ],
             'extra' => [
                 // Global default mode applies to files without their own per-file "mode".
-                'composer-assets' => ['allowed-packages' => ['acme/assets-provider'], 'mode' => '0664'],
+                'composer-assets' => [
+                    'allowed-packages' => ['acme/assets-provider'],
+                    'mode' => '0664',
+                    'file-mapping' => [
+                        // Option-only override: inherit the provider's source for this
+                        // file and just flip it to owned (overwrite:false), so local
+                        // edits are kept and it becomes drift-tracked.
+                        'web/override-me.txt' => ['overwrite' => false],
+                    ],
+                ],
             ],
             'config' => ['allow-plugins' => ['kanopi/composer-assets' => true]],
         ];
@@ -75,6 +84,8 @@ final class InstallIntegrationTest extends TestCase
         // Pre-existing files prove overwrite:false protection and in-place force-append.
         file_put_contents($this->workdir . '/web/robots.txt', "KEEP ME\n");
         file_put_contents($this->workdir . '/web/.htaccess-extra', "ORIGINAL\n");
+        // Pre-existing, locally-edited copy of the option-only-override target.
+        file_put_contents($this->workdir . '/web/override-me.txt', "LOCAL EDIT\n");
 
         // Pre-existing structured files prove JSON + YAML merge.
         file_put_contents(
@@ -90,6 +101,10 @@ final class InstallIntegrationTest extends TestCase
         [$code, $output] = $this->composer('install --no-interaction');
         self::assertSame(0, $code, "composer install failed:\n" . $output);
 
+        // The owned (overwrite:false) robots.txt stays diverged, so install warns
+        // about it (the "still drifted" message).
+        self::assertStringContainsString('web/robots.txt has drifted from its package source', $output);
+
         // Replace: copied from the provider, with the configured permission mode.
         self::assertFileExists($this->workdir . '/web/.htaccess');
         self::assertStringEqualsFile($this->workdir . '/web/.htaccess', "Deny from all\n");
@@ -100,6 +115,14 @@ final class InstallIntegrationTest extends TestCase
 
         // overwrite:false — the pre-existing file is untouched.
         self::assertStringEqualsFile($this->workdir . '/web/robots.txt', "KEEP ME\n");
+
+        // Option-only override: root flipped the provider's overwrite:true mapping
+        // to overwrite:false (inheriting its source), so the local edit survives...
+        self::assertStringEqualsFile($this->workdir . '/web/override-me.txt', "LOCAL EDIT\n");
+        // ...and the file is now drift-tracked (differs from the provider's source).
+        [$ovCode, $ovOut] = $this->composer('assets:check --no-interaction');
+        self::assertSame(0, $ovCode, $ovOut);
+        self::assertStringContainsString('web/override-me.txt', $ovOut);
 
         // force-append into an existing tracked file.
         self::assertStringEqualsFile($this->workdir . '/web/.htaccess-extra', "ORIGINAL\n# extra rules\n");
@@ -139,6 +162,10 @@ final class InstallIntegrationTest extends TestCase
         self::assertSame(['composer install'], $tugboat['services']['php']['commands']['build']);
         self::assertSame('tugboatqa/mysql:8', $tugboat['services']['mysql']['image']);
 
+        // Hand-edit an overwrite:true file: the next run must warn that it
+        // diverged AND reset it to the package source.
+        file_put_contents($this->workdir . '/web/.htaccess', "HAND EDITED\n");
+
         // The `composer assets` command exists and is idempotent.
         [$code2, $output2] = $this->composer('assets --no-interaction');
         self::assertSame(0, $code2, "composer assets failed:\n" . $output2);
@@ -147,6 +174,13 @@ final class InstallIntegrationTest extends TestCase
             "ORIGINAL\n# extra rules\n",
             'force-append must not duplicate content on re-run.',
         );
+
+        // The hand-edited overwrite:true file: warned as "updated to match", and reset.
+        self::assertStringContainsString(
+            'web/.htaccess differed from its package source and was updated to match it',
+            $output2,
+        );
+        self::assertStringEqualsFile($this->workdir . '/web/.htaccess', "Deny from all\n");
 
         // YAML merge with replace-arrays must be idempotent too.
         $tugboat2 = \Symfony\Component\Yaml\Yaml::parse((string) file_get_contents($this->workdir . '/.tugboat/config.yml'));
@@ -259,7 +293,15 @@ final class InstallIntegrationTest extends TestCase
             ],
             'extra' => [
                 // Force gitignore management on so the test doesn't depend on auto-detection.
-                'composer-assets' => ['allowed-packages' => ['acme/assets-provider'], 'gitignore' => true],
+                'composer-assets' => [
+                    'allowed-packages' => ['acme/assets-provider'],
+                    'gitignore' => true,
+                    'file-mapping' => [
+                        // Option-only override of a provider file: keep it AND commit it
+                        // (overwrite:false + gitignore:false), inheriting the source.
+                        'web/override-me.txt' => ['overwrite' => false, 'gitignore' => false],
+                    ],
+                ],
             ],
             'config' => ['allow-plugins' => ['kanopi/composer-assets' => true]],
         ];
@@ -275,6 +317,9 @@ final class InstallIntegrationTest extends TestCase
         // Make it a git working copy that ignores vendor/.
         $this->shell('git init -q');
         file_put_contents($this->workdir . '/.gitignore', "/vendor/\n");
+        // A stale entry a prior run wrote for the now-overridden (gitignore:false)
+        // file: management must retract it. (web/ is created in setUp.)
+        file_put_contents($this->workdir . '/web/.gitignore', "/override-me.txt\n");
 
         [$code, $output] = $this->composer('install --no-interaction');
         self::assertSame(0, $code, "composer install failed:\n" . $output);
@@ -287,6 +332,17 @@ final class InstallIntegrationTest extends TestCase
         self::assertFileExists($this->workdir . '/.circleci/config.yml');
         [$ignoredCode] = $this->shell('git check-ignore .circleci/config.yml');
         self::assertSame(1, $ignoredCode, '.circleci/config.yml must NOT be gitignored (CI needs it committed).');
+
+        // Option-only override flipping a provider file to gitignore:false must be
+        // honored through the inheritance path AND retract the stale entry a prior
+        // run wrote: the file is NOT ignored, and its .gitignore line is gone.
+        self::assertFileExists($this->workdir . '/web/override-me.txt');
+        [$ovIgnored] = $this->shell('git check-ignore web/override-me.txt');
+        self::assertSame(1, $ovIgnored, 'overridden file must NOT be gitignored.');
+        self::assertFileExists($this->workdir . '/web/.gitignore');
+        self::assertStringNotContainsString('override-me.txt', $this->projectContents('web/.gitignore'), 'stale ignore entry must be retracted.');
+        // The directory's other managed file is still ignored, so the file remains.
+        self::assertStringContainsString('/.htaccess', $this->projectContents('web/.gitignore'));
     }
 
     private function projectContents(string $relative): string

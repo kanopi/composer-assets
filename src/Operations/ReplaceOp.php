@@ -110,11 +110,20 @@ final class ReplaceOp implements OperationInterface
         return $this->gitignore ?? true;
     }
 
+    public function gitignoreIntent(): ?bool
+    {
+        return $this->gitignore;
+    }
+
     public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string
     {
-        // `overwrite: true` is re-synced every run and symlinks track the source,
-        // so neither can drift — only an owned `overwrite: false` copy can.
-        if ($this->overwrite || ($this->symlink ?? $globalSymlink)) {
+        // Both `overwrite: true` and `overwrite: false` copies are drift-checked:
+        // a divergence means the on-disk file differs from the package source —
+        // for an owned (overwrite:false) copy the package has moved ahead, and for
+        // an overwrite:true copy the generated file has been hand-edited (and would
+        // be clobbered on the next run). Only symlinks are exempt: the link *is*
+        // the source, so it can never diverge.
+        if ($this->symlink ?? $globalSymlink) {
             return null;
         }
 

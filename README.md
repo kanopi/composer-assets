@@ -78,6 +78,7 @@ Each value selects an operation:
 | `{ "merge": "...", "default": "...", "format": "yaml", "array": "replace", "force-merge": true }` | **Merge** structured JSON/YAML. |
 | `{ "path": "...", "mode": "0755" }` | Any write op, plus **`chmod`** the result to that mode. |
 | `"assets/dir/"` or `"assets/*.yml"` (directory or glob source) | **Replace** every matched file (see below). |
+| `{ "overwrite": false }` (options, no source) | **Override** — inherit another package's mapping for this path and change only these options (see below). |
 | `false` | **Skip** — cancel a mapping inherited from another package. |
 
 Source paths are resolved **relative to the package that declares them**
@@ -192,6 +193,48 @@ merged **over** the base `file-mapping`, in array order (last-wins by
 destination), then per-entry conditions and candidate lists resolve as above. A
 group's `file-mapping` is a full mapping, so it can contain `if` entries,
 candidate lists, directory/glob sources, `mode`, etc.
+
+### Overriding a dependency's mapping (options only)
+
+To **change the options on a file another package provides — without redeclaring
+its source** — give the destination an object with options but **no** source key
+(`path` / `append` / `prepend` / `merge`). It inherits the source and operation
+from the lower-precedence package's mapping for that same destination, and
+overlays only the options you set (`overwrite`, `gitignore`, `mode`, `drift`,
+`symlink`):
+
+```json
+{
+    "extra": {
+        "composer-assets": {
+            "allowed-packages": ["acme/site-recipe"],
+            "file-mapping": {
+                "web/.htaccess": { "overwrite": false, "gitignore": false }
+            }
+        }
+    }
+}
+```
+
+Here `acme/site-recipe` ships `web/.htaccess` as a normal (overwritten, ignored)
+file; your root project takes ownership of it — keeps local edits
+(`overwrite: false`), commits it instead of ignoring it (`gitignore: false`) —
+without needing a copy of the source. This is the right tool for *"this file is
+scaffolded by a dependency, but we've customized it and want to track it in
+git."*
+
+- The override must resolve against an **existing** lower-precedence mapping for
+  the same path; otherwise it errors (there's no source to inherit).
+- Because the **root project is applied last**, it can override any allowed
+  package this way. An allowed package can likewise override an earlier one.
+- It works on directory/glob-expanded files too — target the concrete
+  destination (e.g. `.github/workflows/ci.yml`).
+
+> [!NOTE]
+> Switching a managed file to `gitignore: false` also **retracts** an ignore
+> entry an earlier run wrote for it — on the next run the stale `.gitignore` line
+> is removed automatically (and an emptied `.gitignore` is deleted). Just
+> `git add` the file afterwards.
 
 **Append/Prepend details**
 
@@ -319,8 +362,15 @@ file but keep it out of `.gitignore` management:
 
 Here `.circleci/config.yml` is copied **and stays tracked**, while `web/.htaccess`
 is still ignored. The flag works on `replace`, `merge`, and `append` mappings;
-`"gitignore": true` conversely forces a file into management. (The plugin only
-*adds* `.gitignore` entries — it won't remove one a previous run already wrote.)
+`"gitignore": true` conversely forces a file into management.
+
+`.gitignore` management is **declarative for the files the plugin manages**:
+setting `"gitignore": false` not only stops the file from being added, it
+**retracts an entry a previous run wrote** for it on the next run (and deletes a
+`.gitignore` left empty as a result). So if a file was scaffolded-and-ignored and
+you later flip it to `gitignore: false`, the stale ignore line is cleaned up
+automatically — no manual edit needed. Lines for files the plugin does *not*
+manage are never touched.
 
 ## Running it
 
@@ -407,11 +457,21 @@ composer assets:check --format=json
 ```
 
 It also runs automatically after `composer install` / `composer update`, where
-it is **warn-only** — drifted files are reported but the run never fails:
+it is **warn-only** — every diverged file is reported but the run never fails.
+Divergence is checked *before* scaffolding, so it surfaces both files that stay
+diverged and files the run reconciled:
 
 ```
 composer-assets: web/robots.txt has drifted from its package source (run "composer assets:check" for the diff).
+composer-assets: .circleci/config.yml differed from its package source and was updated to match it.
 ```
+
+- The **"has drifted"** message is for files the run leaves untouched (owned
+  `overwrite: false` copies and `force-append`/`force-merge` targets) — they're
+  still diverged, so it points you at `assets:check` for the diff.
+- The **"differed … and was updated to match it"** message is for files the run
+  rewrote (e.g. a hand-edited `overwrite: true` file reset to the package
+  version) — there's no diff left to show, but you're told it changed.
 
 ### Resolving drift (`assets:reapply`)
 
@@ -449,15 +509,22 @@ you intentionally diverge, use `"drift": false` (below), which also hides it fro
 
 ### What is (and isn't) checked
 
-- **Checked:** `replace` with `"overwrite": false`, and `force-append` /
-  `force-merge` targets — the files the project owns.
-- **Not checked:** plain `replace` (overwrite:true) and symlinks (re-synced
-  every run, so they can't drift), `skip`, and `merge` with `"array": "concat"`
-  (not idempotent — a re-merge always differs, so drift can't be told apart from
-  normal operation).
+- **Checked:** every `replace` (both `"overwrite": true` and `false`), and
+  `force-append` / `force-merge` targets.
+  - For an `overwrite: false` copy, drift means the **package moved ahead** of
+    your owned file.
+  - For an `overwrite: true` copy, drift means the **generated file was
+    hand-edited** and would be clobbered on the next scaffold run — a heads-up
+    that you're editing a managed file. (No false positives right after a run:
+    the file was just synced to the source, so it matches.)
+- **Not checked:** symlinks (the link *is* the source, so it can't diverge),
+  `skip`, and `merge` with `"array": "concat"` (not idempotent — a re-merge
+  always differs, so drift can't be told apart from normal operation).
 - A **missing** destination is reported as a "would create", not as drift.
 - `force-append` drift means *a run would add/change content*; because append is
   additive it surfaces the divergence but can't remove a stale older fragment.
+- Opt any individual file out of drift reporting with `"drift": false` (see
+  below) — e.g. a generated file you don't want flagged when locally tweaked.
 
 ### Failing the build (`fail-on-drift`)
 
@@ -531,6 +598,7 @@ Read-only. Pass paths to limit the listing to specific files.
 | Per-file + global permissions (`mode`) | ❌ | ✅ |
 | Directory / glob mappings | ❌ | ✅ |
 | Conditional mappings (`if` / `unless`, candidate lists) | ❌ | ✅ |
+| Option-only override of a dependency's mapping | ❌ | ✅ |
 | Symlink mode | ✅ | ✅ |
 | `.gitignore` management | ✅ | ✅ |
 | Allowed-packages + delegation | ✅ | ✅ |

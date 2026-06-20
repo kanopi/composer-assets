@@ -57,12 +57,40 @@ final class DriftCheckerTest extends TempDirTestCase
         self::assertSame([], $this->check([$info]));
     }
 
-    public function testOverwriteTrueNeverDrifts(): void
+    public function testOverwriteTrueDriftsWhenHandEdited(): void
     {
-        // overwrite:true is re-synced every run, so it is not an owned file.
+        // overwrite:true files are now drift-checked too: a divergence means the
+        // generated file was hand-edited and would be clobbered on the next run.
         $this->writePackageFile('assets/robots', "NEW\n");
         $this->writeProjectFile('robots.txt', "OLD\n");
         $info = new AssetFileInfo($this->dest('robots.txt'), new ReplaceOp($this->src('assets/robots'), overwrite: true));
+
+        $drifts = $this->check([$info]);
+
+        self::assertCount(1, $drifts);
+        self::assertSame("OLD\n", $drifts[0]->current());
+        self::assertSame("NEW\n", $drifts[0]->expected());
+    }
+
+    public function testOverwriteTrueInSyncDoesNotDrift(): void
+    {
+        $this->writePackageFile('assets/robots', "SAME\n");
+        $this->writeProjectFile('robots.txt', "SAME\n");
+        $info = new AssetFileInfo($this->dest('robots.txt'), new ReplaceOp($this->src('assets/robots'), overwrite: true));
+
+        self::assertSame([], $this->check([$info]));
+    }
+
+    public function testOverwriteTrueDriftOptOut(): void
+    {
+        // "drift": false opts an overwrite:true file out of the report.
+        $this->writePackageFile('assets/robots', "NEW\n");
+        $this->writeProjectFile('robots.txt', "OLD\n");
+        $info = new AssetFileInfo(
+            $this->dest('robots.txt'),
+            new ReplaceOp($this->src('assets/robots'), overwrite: true),
+            driftCheck: false,
+        );
 
         self::assertSame([], $this->check([$info]));
     }

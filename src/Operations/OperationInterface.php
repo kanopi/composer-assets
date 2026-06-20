@@ -38,13 +38,23 @@ interface OperationInterface
     public function isManagedFile(): bool;
 
     /**
+     * The explicit per-file `gitignore` setting, or null when unset (defaulted).
+     *
+     * A value of `false` is an active intent to *not* ignore the file — gitignore
+     * management uses it to retract an entry a previous run may have written.
+     */
+    public function gitignoreIntent(): ?bool;
+
+    /**
      * The content a real run would settle the destination on, computed WITHOUT
      * writing to disk — used for drift detection.
      *
      * Returns null when this operation owns no stable, checkable destination:
-     * a plain `overwrite: true` copy or a symlink (both re-synced every run, so
-     * they never drift), a skip, or a non-idempotent merge (`array: concat`,
-     * whose result grows on every run and would always read as drift).
+     * a symlink (the link is the source, so it can never diverge), a skip, or a
+     * non-idempotent merge (`array: concat`, whose result grows on every run and
+     * would always read as drift). Both `overwrite: true` and `overwrite: false`
+     * copies are checkable — for the former, drift means the generated file was
+     * hand-edited; for the latter, that the package moved ahead.
      *
      * @param string|null $current the destination's current bytes, or null if absent
      */

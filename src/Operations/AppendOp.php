@@ -129,6 +129,11 @@ final class AppendOp implements OperationInterface
         return $this->managedDefault && !$this->forceAppend;
     }
 
+    public function gitignoreIntent(): ?bool
+    {
+        return $this->gitignore;
+    }
+
     public function expectedContent(AssetFilePath $destination, ?string $current, bool $globalSymlink): ?string
     {
         // Mirror process()'s computation without writing. Drift here means a run

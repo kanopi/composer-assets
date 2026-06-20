@@ -12,6 +12,7 @@
                 "package.json": { "merge": "assets/package-fragment.json", "force-merge": true },
                 ".tugboat/config.yml": { "merge": "assets/tugboat-overlay.yml", "force-merge": true },
                 ".circleci/config.yml": { "path": "assets/circleci.yml", "gitignore": false },
+                "web/override-me.txt": "assets/cond/present.txt",
                 ".github/": "assets/github/",
                 "web/cond-present.txt": { "path": "assets/cond/present.txt", "if": { "package": "acme/assets-provider" } },
                 "web/cond-absent.txt": { "path": "assets/cond/present.txt", "if": { "package": "nope/missing" } },

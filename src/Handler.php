@@ -47,24 +47,29 @@ final class Handler
         }
         $this->io->write('<info>Scaffolding asset files</info>');
 
-        /** @var list<AssetFilePath> $managed */
-        $managed = [];
+        $symlink = $rootOptions->symlink();
+
+        // Snapshot divergence BEFORE processing, so we can also surface files the
+        // run reconciles (e.g. a hand-edited overwrite:true file) — not just the
+        // ones that stay diverged afterward.
+        $driftsBefore = (new DriftChecker($this->io))->check($mappings, $symlink);
+
         foreach ($mappings as $info) {
-            if ($info->process($this->io, $rootOptions->symlink(), $dryRun)) {
-                $managed[] = $info->destination();
-            }
+            $info->process($this->io, $symlink, $dryRun);
         }
 
         // A dry run reports planned operations only: skip the .gitignore writes
         // and the post-run script event, both of which mutate state.
         if (!$dryRun) {
-            $this->manageGitignore($rootOptions->gitignore(), $this->projectRoot(), $managed);
+            [$toIgnore, $toUnignore] = $this->gitignoreSets($mappings);
+            $this->manageGitignore($rootOptions->gitignore(), $this->projectRoot(), $toIgnore, $toUnignore);
         }
 
-        // Surface owned files that have drifted from their package source. This
-        // is warn-only here; "composer assets:check" reports the diffs and can
-        // fail when "fail-on-drift" is configured.
-        $this->warnOnDrift((new DriftChecker($this->io))->check($mappings, $rootOptions->symlink()));
+        // Warn for every file that diverged. A dry run changes nothing, so the
+        // "after" set equals the "before" set (all reported as still-drifted);
+        // a real run re-checks to tell reconciled files from remaining drift.
+        $driftsAfter = $dryRun ? $driftsBefore : (new DriftChecker($this->io))->check($mappings, $symlink);
+        $this->warnOnDrift($driftsBefore, $driftsAfter);
 
         if (!$dryRun) {
             $this->composer->getEventDispatcher()->dispatchScript(self::POST_CMD, $devMode);
@@ -154,6 +159,11 @@ final class Handler
      * Merges the file-mappings of every allowed package in precedence order
      * (later packages override earlier ones for the same destination).
      *
+     * Accumulates raw values per destination first, so an **option-only override**
+     * — an object with options (`overwrite`/`drift`/`mode`/…) but no source — can
+     * inherit the source and operation from the lower-precedence package's entry
+     * (keeping that package's source context) and merely overlay the options.
+     *
      * @return array<string, AssetFileInfo>
      */
     private function buildMappings(): array
@@ -163,7 +173,8 @@ final class Handler
         $evaluator = $this->conditionEvaluator($projectRoot);
         $allowed = (new AllowedPackages($this->composer, $this->io))->getAllowedPackages();
 
-        $mappings = [];
+        /** @var array<string, array{value: mixed, factory: OperationFactory, provider: string}> $records */
+        $records = [];
         foreach ($allowed as $package) {
             $options = $this->optionsFor($package);
             if (!$options->hasFileMapping() && !$options->hasConditional()) {
@@ -175,47 +186,170 @@ final class Handler
             $resolved = $evaluator->resolve($raw);
             $expanded = (new MappingExpander($this->io))->expand($resolved, $packageRoot);
             foreach ($expanded as $destination => $value) {
-                $dest = AssetFilePath::destination($projectRoot, (string) $destination);
-                $driftCheck = true;
-                if (is_array($value) && array_key_exists('drift', $value)) {
-                    $driftCheck = (bool) $value['drift'];
+                $destination = (string) $destination;
+                if (self::isOptionOnlyOverride($value)) {
+                    if (!isset($records[$destination])) {
+                        throw new \InvalidArgumentException(sprintf(
+                            'file-mapping for "%s" sets options but no source '
+                            . '("path"/"append"/"prepend"/"merge"), and no earlier package '
+                            . 'provides a mapping to inherit from.',
+                            $destination,
+                        ));
+                    }
+                    // Inherit source/operation from the lower-precedence entry,
+                    // keeping its factory (source context) and provider.
+                    $records[$destination]['value'] = self::applyOverride(
+                        $records[$destination]['value'],
+                        $value,
+                        $destination,
+                    );
+
+                    continue;
                 }
-                $mappings[(string) $destination] = new AssetFileInfo(
-                    $dest,
-                    $factory->create((string) $destination, $value),
-                    $driftCheck,
-                    $package->getName(),
-                );
+
+                $records[$destination] = [
+                    'value' => $value,
+                    'factory' => $factory,
+                    'provider' => $package->getName(),
+                ];
             }
+        }
+
+        $mappings = [];
+        foreach ($records as $destination => $record) {
+            $value = $record['value'];
+            $dest = AssetFilePath::destination($projectRoot, $destination);
+            $driftCheck = true;
+            if (is_array($value) && array_key_exists('drift', $value)) {
+                $driftCheck = (bool) $value['drift'];
+            }
+            $mappings[$destination] = new AssetFileInfo(
+                $dest,
+                $record['factory']->create($destination, $value),
+                $driftCheck,
+                $record['provider'],
+            );
         }
 
         return $mappings;
     }
 
     /**
-     * @param list<Drift> $drifts
+     * Whether a mapping value is an object carrying options but no source — an
+     * override that inherits its source/operation from a lower-precedence package.
+     *
+     * @param mixed $value
      */
-    private function warnOnDrift(array $drifts): void
+    private static function isOptionOnlyOverride(mixed $value): bool
     {
-        foreach ($drifts as $drift) {
-            $this->io->writeError(sprintf(
-                '<warning>composer-assets: %s has drifted from its package source '
-                . '(run "composer assets:check" for the diff).</warning>',
-                $drift->label(),
+        if (!is_array($value) || array_is_list($value)) {
+            return false; // string, false, or a (already-resolved) candidate list
+        }
+
+        foreach (['path', 'append', 'prepend', 'merge'] as $sourceKey) {
+            if (array_key_exists($sourceKey, $value)) {
+                return false;
+            }
+        }
+
+        return true; // object with no source key
+    }
+
+    /**
+     * Overlays an override's options onto the inherited entry, preserving the
+     * inherited source and operation.
+     *
+     * @param mixed $inherited the lower-precedence package's raw value
+     * @param array<string, mixed> $override the option-only override
+     * @return array<string, mixed>
+     */
+    private static function applyOverride(mixed $inherited, array $override, string $destination): array
+    {
+        if (is_string($inherited)) {
+            $base = ['path' => $inherited];
+        } elseif (is_array($inherited) && !array_is_list($inherited)) {
+            $base = $inherited;
+        } else {
+            throw new \InvalidArgumentException(sprintf(
+                'file-mapping for "%s" applies options to a mapping that has no source to '
+                . 'inherit (the inherited entry is a skip).',
+                $destination,
             ));
+        }
+
+        return array_merge($base, $override);
+    }
+
+    /**
+     * Warns for every file that diverged from its package source.
+     *
+     * Files still diverged after the run (project-owned copies) are pointed at
+     * `assets:check` for the diff; files the run reconciled (e.g. a hand-edited
+     * overwrite:true file that was rewritten) are reported as updated, since they
+     * now match the source and have no diff left to show.
+     *
+     * @param list<Drift> $before drift detected before processing
+     * @param list<Drift> $after  drift remaining after processing
+     */
+    private function warnOnDrift(array $before, array $after): void
+    {
+        $remaining = [];
+        foreach ($after as $drift) {
+            $remaining[$drift->label()] = true;
+        }
+
+        foreach ($before as $drift) {
+            if (isset($remaining[$drift->label()])) {
+                $this->io->writeError(sprintf(
+                    '<warning>composer-assets: %s has drifted from its package source '
+                    . '(run "composer assets:check" for the diff).</warning>',
+                    $drift->label(),
+                ));
+            } else {
+                $this->io->writeError(sprintf(
+                    '<warning>composer-assets: %s differed from its package source '
+                    . 'and was updated to match it.</warning>',
+                    $drift->label(),
+                ));
+            }
         }
     }
 
     /**
-     * @param list<AssetFilePath> $managed
+     * Splits the mappings into files that should be gitignored and files whose
+     * gitignore entry should be retracted (explicit `gitignore: false`).
+     *
+     * @param iterable<AssetFileInfo> $mappings
+     * @return array{0: list<AssetFilePath>, 1: list<AssetFilePath>} [toIgnore, toUnignore]
      */
-    private function manageGitignore(?bool $option, string $projectRoot, array $managed): void
+    private function gitignoreSets(iterable $mappings): array
+    {
+        $toIgnore = [];
+        $toUnignore = [];
+        foreach ($mappings as $info) {
+            $op = $info->operation();
+            if ($op->isManagedFile() && $info->destination()->exists()) {
+                $toIgnore[] = $info->destination();
+            } elseif ($op->gitignoreIntent() === false) {
+                // Explicitly opted out: ensure no stale entry lingers.
+                $toUnignore[] = $info->destination();
+            }
+        }
+
+        return [$toIgnore, $toUnignore];
+    }
+
+    /**
+     * @param list<AssetFilePath> $toIgnore
+     * @param list<AssetFilePath> $toUnignore
+     */
+    private function manageGitignore(?bool $option, string $projectRoot, array $toIgnore, array $toUnignore): void
     {
         $git = new Git(new ProcessExecutor($this->io));
         $manager = new ManageGitIgnore($projectRoot, $git, $this->io);
         $vendorDir = (string) $this->composer->getConfig()->get('vendor-dir');
         if ($manager->isEnabled($option, $vendorDir)) {
-            $manager->manage($managed);
+            $manager->manage($toIgnore, $toUnignore);
         }
     }
 
