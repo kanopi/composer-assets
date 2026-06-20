@@ -113,6 +113,86 @@ a directory or a glob pattern** expands into one entry per matched file:
 - Only `replace` expands. `append` / `prepend` / `merge` / `skip` entries are
   always single-file.
 
+### Conditional mappings
+
+Apply a mapping only when a condition holds — handy for a recipe package that
+targets several setups (framework or PHP versions, CI vs local, …). Add `if`
+(must hold) or `unless` (must not) to the object form of a mapping:
+
+```json
+"phpunit.xml.dist":  { "path": "assets/phpunit.xml", "if": { "php": ">=8.1" } },
+".ddev/config.yaml": { "path": "assets/ddev.yaml", "if": { "env": "DDEV" } },
+"web/x.local":       { "path": "assets/x.local", "unless": { "exists": "web/x.local" } }
+```
+
+When the condition fails the entry is simply **omitted** — it does *not* cancel a
+mapping from another package (that's what `false` does).
+
+**Conditions** (multiple keys in one condition object are AND-ed):
+
+| Key | Holds when |
+|-----|-----------|
+| `package` | `"vendor/name"` is installed, or `"vendor/name:^10"` is installed *and* satisfies the constraint. |
+| `php` | the PHP version satisfies the constraint (e.g. `">=8.2"`). Uses `config.platform.php` if set, else the runtime version. |
+| `env` | `"NAME"` is set and non-empty, or `{ "NAME": "value" }` matches exactly. |
+| `exists` | the given project-relative path exists (evaluated *before* scaffolding writes). |
+
+> [!NOTE]
+> `package` and `php` are reproducible from the lock file; `env` and `exists`
+> depend on the environment, so the **same repo can scaffold differently** on
+> different machines. Prefer `package`/`php` unless you specifically want
+> environment-dependent behavior.
+
+**Same destination, different source per condition** — because a JSON object
+can't repeat a key, give the destination an **ordered list of candidates**; the
+first whose condition passes wins, and a candidate with no condition is the
+fallback (put it last). If none match, the entry is omitted.
+
+```json
+"web/robots.txt": [
+    { "path": "assets/d12/robots.txt", "if": { "package": "drupal/core:^12" } },
+    { "path": "assets/d11/robots.txt", "if": { "package": "drupal/core:^11" } },
+    { "path": "assets/d10/robots.txt", "if": { "package": "drupal/core:^10" } },
+    { "path": "assets/robots.txt" }
+]
+```
+
+A candidate's `if` can AND several facts for a matrix cell, e.g.
+`{ "path": "...", "if": { "package": "drupal/core:^11", "php": ">=8.4" } }`. A
+candidate is an ordinary mapping value, so this works with `append` / `merge` /
+`false` too. Conditions resolve **before** directory/glob expansion, so a
+candidate may itself be a directory or glob source.
+
+**Whole sets of files** — when many files share one condition, group them under
+`conditional` (a sibling of `file-mapping`) instead of repeating `if` on each:
+
+```json
+{
+    "extra": {
+        "composer-assets": {
+            "file-mapping": {
+                "web/.htaccess": "assets/htaccess"
+            },
+            "conditional": [
+                { "if": { "package": "drupal/core:^11" }, "file-mapping": {
+                    "web/robots.txt": "assets/d11/robots.txt",
+                    "web/sites/default/settings.php": "assets/d11/settings.php"
+                }},
+                { "unless": { "env": "CI" }, "file-mapping": {
+                    ".ddev/config.yaml": "assets/ddev.yaml"
+                }}
+            ]
+        }
+    }
+}
+```
+
+Each group is `{ "if" | "unless": {…}, "file-mapping": {…} }`. Passing groups are
+merged **over** the base `file-mapping`, in array order (last-wins by
+destination), then per-entry conditions and candidate lists resolve as above. A
+group's `file-mapping` is a full mapping, so it can contain `if` entries,
+candidate lists, directory/glob sources, `mode`, etc.
+
 **Append/Prepend details**
 
 - If the destination is missing and a `default` source is given, that default is
@@ -450,6 +530,7 @@ Read-only. Pass paths to limit the listing to specific files.
 | Dry-run preview (`assets`/`assets:reapply --dry-run`) | ❌ | ✅ |
 | Per-file + global permissions (`mode`) | ❌ | ✅ |
 | Directory / glob mappings | ❌ | ✅ |
+| Conditional mappings (`if` / `unless`, candidate lists) | ❌ | ✅ |
 | Symlink mode | ✅ | ✅ |
 | `.gitignore` management | ✅ | ✅ |
 | Allowed-packages + delegation | ✅ | ✅ |

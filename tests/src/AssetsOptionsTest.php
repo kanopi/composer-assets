@@ -56,4 +56,25 @@ final class AssetsOptionsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         AssetsOptions::create(['mode' => 'not-octal']);
     }
+
+    public function testConditionalDefaultsToEmpty(): void
+    {
+        $options = AssetsOptions::create([]);
+        self::assertSame([], $options->conditional());
+        self::assertFalse($options->hasConditional());
+    }
+
+    public function testReadsConditionalGroups(): void
+    {
+        $groups = [['if' => ['package' => 'drupal/core'], 'file-mapping' => ['a.txt' => 'assets/a']]];
+        $options = AssetsOptions::create(['conditional' => $groups]);
+        self::assertTrue($options->hasConditional());
+        self::assertSame($groups, $options->conditional());
+    }
+
+    public function testInvalidConditionalThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        AssetsOptions::create(['conditional' => 'nope']);
+    }
 }

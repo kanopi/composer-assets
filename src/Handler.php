@@ -160,17 +160,20 @@ final class Handler
     {
         $projectRoot = $this->projectRoot();
         $globalMode = $this->optionsFor($this->composer->getPackage())->mode();
+        $evaluator = $this->conditionEvaluator($projectRoot);
         $allowed = (new AllowedPackages($this->composer, $this->io))->getAllowedPackages();
 
         $mappings = [];
         foreach ($allowed as $package) {
             $options = $this->optionsFor($package);
-            if (!$options->hasFileMapping()) {
+            if (!$options->hasFileMapping() && !$options->hasConditional()) {
                 continue;
             }
             $packageRoot = $this->installPath($package, $projectRoot);
             $factory = new OperationFactory($package->getName(), $packageRoot, $globalMode);
-            $expanded = (new MappingExpander($this->io))->expand($options->fileMapping(), $packageRoot);
+            $raw = $evaluator->mergeConditionalGroups($options->fileMapping(), $options->conditional());
+            $resolved = $evaluator->resolve($raw);
+            $expanded = (new MappingExpander($this->io))->expand($resolved, $packageRoot);
             foreach ($expanded as $destination => $value) {
                 $dest = AssetFilePath::destination($projectRoot, (string) $destination);
                 $driftCheck = true;
@@ -214,6 +217,28 @@ final class Handler
         if ($manager->isEnabled($option, $vendorDir)) {
             $manager->manage($managed);
         }
+    }
+
+    /**
+     * Builds the condition evaluator from the current install: installed package
+     * versions, the effective PHP version (config.platform.php, else runtime),
+     * the environment, and the project root.
+     */
+    private function conditionEvaluator(string $projectRoot): ConditionEvaluator
+    {
+        $versions = [];
+        foreach ($this->composer->getRepositoryManager()->getLocalRepository()->getPackages() as $package) {
+            $versions[$package->getName()] = $package->getPrettyVersion();
+        }
+
+        $platform = $this->composer->getConfig()->get('platform');
+        $php = is_array($platform) && isset($platform['php']) && $platform['php'] !== ''
+            ? (string) $platform['php']
+            : PHP_VERSION;
+
+        $env = getenv();
+
+        return new ConditionEvaluator($versions, $php, is_array($env) ? $env : [], $projectRoot);
     }
 
     private function optionsFor(PackageInterface $package): AssetsOptions

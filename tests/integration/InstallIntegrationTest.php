@@ -114,6 +114,19 @@ final class InstallIntegrationTest extends TestCase
         self::assertStringEqualsFile($this->workdir . '/.github/CODEOWNERS', "* @acme/team\n");
         self::assertStringEqualsFile($this->workdir . '/.github/workflows/test.yml', "name: test\n");
 
+        // Conditional mappings:
+        // - "if" on a present package -> scaffolded.
+        self::assertStringEqualsFile($this->workdir . '/web/cond-present.txt', "present\n");
+        // - "if" on an absent package -> omitted entirely.
+        self::assertFileDoesNotExist($this->workdir . '/web/cond-absent.txt');
+        // - candidate list -> the first matching variant (php >= 8.0) wins.
+        self::assertStringEqualsFile($this->workdir . '/web/cond-variant.txt', "new\n");
+
+        // Conditional groups: a passing group's file-mapping is scaffolded; a
+        // failing group's is not.
+        self::assertStringEqualsFile($this->workdir . '/web/group-present.txt', "present\n");
+        self::assertFileDoesNotExist($this->workdir . '/web/group-absent.txt');
+
         // JSON merge: provider's scripts/devDependencies merged into existing package.json.
         $pkg = json_decode((string) file_get_contents($this->workdir . '/package.json'), true);
         self::assertSame('vite build', $pkg['scripts']['build'], 'existing script preserved');

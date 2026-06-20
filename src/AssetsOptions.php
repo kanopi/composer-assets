@@ -24,6 +24,7 @@ final class AssetsOptions
         private readonly array $allowedPackages,
         private readonly bool $failOnDrift,
         private readonly ?int $mode,
+        private readonly array $conditional,
     ) {
     }
 
@@ -44,6 +45,11 @@ final class AssetsOptions
             throw new \InvalidArgumentException('"composer-assets.allowed-packages" must be an array.');
         }
 
+        $conditional = $extra['conditional'] ?? [];
+        if (!is_array($conditional)) {
+            throw new \InvalidArgumentException('"composer-assets.conditional" must be an array of condition groups.');
+        }
+
         return new self(
             $fileMapping,
             (bool) ($extra['symlink'] ?? false),
@@ -51,6 +57,7 @@ final class AssetsOptions
             array_values(array_map('strval', $allowed)),
             (bool) ($extra['fail-on-drift'] ?? false),
             FileMode::parse($extra['mode'] ?? null),
+            array_values($conditional),
         );
     }
 
@@ -60,6 +67,23 @@ final class AssetsOptions
     public function fileMapping(): array
     {
         return $this->fileMapping;
+    }
+
+    /**
+     * Condition groups: a list of `{ if|unless, file-mapping }` objects whose
+     * mappings are merged in (after the base file-mapping) when their condition
+     * holds.
+     *
+     * @return list<mixed>
+     */
+    public function conditional(): array
+    {
+        return $this->conditional;
+    }
+
+    public function hasConditional(): bool
+    {
+        return $this->conditional !== [];
     }
 
     public function symlink(): bool

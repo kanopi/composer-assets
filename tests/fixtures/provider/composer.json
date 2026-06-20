@@ -12,8 +12,24 @@
                 "package.json": { "merge": "assets/package-fragment.json", "force-merge": true },
                 ".tugboat/config.yml": { "merge": "assets/tugboat-overlay.yml", "force-merge": true },
                 ".circleci/config.yml": { "path": "assets/circleci.yml", "gitignore": false },
-                ".github/": "assets/github/"
-            }
+                ".github/": "assets/github/",
+                "web/cond-present.txt": { "path": "assets/cond/present.txt", "if": { "package": "acme/assets-provider" } },
+                "web/cond-absent.txt": { "path": "assets/cond/present.txt", "if": { "package": "nope/missing" } },
+                "web/cond-variant.txt": [
+                    { "path": "assets/cond/new.txt", "if": { "php": ">=8.0" } },
+                    { "path": "assets/cond/old.txt" }
+                ]
+            },
+            "conditional": [
+                {
+                    "if": { "package": "acme/assets-provider" },
+                    "file-mapping": { "web/group-present.txt": "assets/cond/present.txt" }
+                },
+                {
+                    "if": { "package": "nope/missing" },
+                    "file-mapping": { "web/group-absent.txt": "assets/cond/present.txt" }
+                }
+            ]
         }
     }
 }
