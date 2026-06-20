@@ -109,6 +109,17 @@ final class MergeOpTest extends TempDirTestCase
         self::assertTrue($op->isManagedFile());
     }
 
+    public function testModeIsAppliedOnWrite(): void
+    {
+        $this->writeProjectFile('package.json', json_encode(['name' => 'site']));
+        $this->writePackageFile('frag.json', json_encode(['private' => true]));
+        $op = new MergeOp($this->src('frag.json'), forceMerge: true, mode: 0640);
+
+        $op->process($this->dest('package.json'), new NullIO(), false);
+
+        self::assertSame(0640, fileperms($this->root . '/package.json') & 0777);
+    }
+
     public function testDryRunReportsButDoesNotWrite(): void
     {
         $this->writeProjectFile('package.json', json_encode(['name' => 'site']));

@@ -89,9 +89,10 @@ final class InstallIntegrationTest extends TestCase
         [$code, $output] = $this->composer('install --no-interaction');
         self::assertSame(0, $code, "composer install failed:\n" . $output);
 
-        // Replace: copied from the provider.
+        // Replace: copied from the provider, with the configured permission mode.
         self::assertFileExists($this->workdir . '/web/.htaccess');
         self::assertStringEqualsFile($this->workdir . '/web/.htaccess', "Deny from all\n");
+        self::assertSame(0640, fileperms($this->workdir . '/web/.htaccess') & 0777, 'mode "0640" must be applied to the copied file.');
 
         // overwrite:false — the pre-existing file is untouched.
         self::assertStringEqualsFile($this->workdir . '/web/robots.txt', "KEEP ME\n");

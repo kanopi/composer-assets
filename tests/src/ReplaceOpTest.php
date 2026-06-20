@@ -90,6 +90,29 @@ final class ReplaceOpTest extends TempDirTestCase
         self::assertSame('<?php // index', $this->projectContents('web/index.php'));
     }
 
+    public function testModeIsAppliedOnCopy(): void
+    {
+        $this->writePackageFile('assets/run', "#!/bin/sh\n");
+        $op = new ReplaceOp($this->src('assets/run'), mode: 0755);
+
+        $op->process($this->dest('bin/run'), new NullIO(), false);
+
+        self::assertSame(0755, fileperms($this->root . '/bin/run') & 0777);
+    }
+
+    public function testModeIsSkippedForSymlink(): void
+    {
+        $this->writePackageFile('assets/run', "#!/bin/sh\n");
+        $sourceBefore = fileperms($this->package . '/assets/run') & 0777;
+        $op = new ReplaceOp($this->src('assets/run'), symlink: true, mode: 0700);
+
+        $op->process($this->dest('bin/run'), new NullIO(), false);
+
+        // The link target (the package source) must keep its original perms.
+        self::assertTrue(is_link($this->root . '/bin/run'));
+        self::assertSame($sourceBefore, fileperms($this->package . '/assets/run') & 0777);
+    }
+
     public function testDryRunReportsButDoesNotWrite(): void
     {
         $this->writePackageFile('assets/htaccess', 'DENY ALL');

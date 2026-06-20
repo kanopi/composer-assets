@@ -66,6 +66,17 @@ final class AppendOpTest extends TempDirTestCase
         self::assertFalse($op->isManagedFile());
     }
 
+    public function testModeIsAppliedOnWrite(): void
+    {
+        $this->writeProjectFile('.htaccess', "ORIGINAL\n");
+        $this->writePackageFile('tail', "EXTRA\n");
+        $op = new AppendOp(append: $this->src('tail'), forceAppend: true, mode: 0640);
+
+        $op->process($this->dest('.htaccess'), new NullIO(), false);
+
+        self::assertSame(0640, fileperms($this->root . '/.htaccess') & 0777);
+    }
+
     public function testDryRunReportsButDoesNotWrite(): void
     {
         $this->writeProjectFile('.htaccess', "ORIGINAL\n");

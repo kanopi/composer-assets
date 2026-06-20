@@ -15,12 +15,23 @@ use Kanopi\Composer\Assets\AssetFilePath;
  */
 final class ReplaceOp implements OperationInterface
 {
+    use HasFileMode;
+
     public function __construct(
         private readonly AssetFilePath $source,
         private readonly bool $overwrite = true,
         private readonly ?bool $symlink = null,
         private readonly ?bool $gitignore = null,
+        private readonly ?int $mode = null,
     ) {
+    }
+
+    /**
+     * The configured permission mode (e.g. 0755), or null for the default.
+     */
+    public function mode(): ?int
+    {
+        return $this->mode;
     }
 
     public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool
@@ -50,10 +61,11 @@ final class ReplaceOp implements OperationInterface
 
         if ($dryRun) {
             $io->write(sprintf(
-                '  - Would %s <info>%s</info> from <comment>%s</comment>',
+                '  - Would %s <info>%s</info> from <comment>%s</comment>%s',
                 $useSymlink ? 'symlink' : 'copy',
                 $label,
                 $this->source->packageName() ?: 'root',
+                $useSymlink ? '' : self::modeLabel($this->mode),
             ));
 
             return true;
@@ -67,13 +79,19 @@ final class ReplaceOp implements OperationInterface
         }
 
         if ($useSymlink) {
+            // chmod follows a symlink to its target, which is the package source —
+            // so a mode is meaningless (and unsafe) here and is intentionally skipped.
+            if ($this->mode !== null) {
+                $io->write(sprintf('  - <comment>mode ignored for symlinked %s</comment>', $label), true, IOInterface::VERBOSE);
+            }
             $this->symlinkFile($this->source->fullPath(), $destPath);
             $io->write(sprintf('  - Symlink <info>%s</info> from <comment>%s</comment>', $label, $this->source->packageName() ?: 'root'));
         } else {
             if (!@copy($this->source->fullPath(), $destPath)) {
                 throw new \RuntimeException(sprintf('Failed to copy to "%s".', $destPath));
             }
-            $io->write(sprintf('  - Copy <info>%s</info> from <comment>%s</comment>', $label, $this->source->packageName() ?: 'root'));
+            self::applyMode($destPath, $this->mode);
+            $io->write(sprintf('  - Copy <info>%s</info> from <comment>%s</comment>%s', $label, $this->source->packageName() ?: 'root', self::modeLabel($this->mode)));
         }
 
         return true;

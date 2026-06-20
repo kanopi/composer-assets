@@ -33,6 +33,8 @@ final class MergeOp implements OperationInterface
     public const ARRAY_CONCAT = 'concat';
     public const ARRAY_UNIQUE = 'unique';
 
+    use HasFileMode;
+
     public function __construct(
         private readonly AssetFilePath $source,
         private readonly ?AssetFilePath $default = null,
@@ -41,10 +43,19 @@ final class MergeOp implements OperationInterface
         private readonly bool $forceMerge = false,
         private readonly bool $managedDefault = false,
         private readonly ?bool $gitignore = null,
+        private readonly ?int $mode = null,
     ) {
         if (!in_array($arrayStrategy, [self::ARRAY_REPLACE, self::ARRAY_CONCAT, self::ARRAY_UNIQUE], true)) {
             throw new \InvalidArgumentException(sprintf('Unknown merge array strategy "%s".', $arrayStrategy));
         }
+    }
+
+    /**
+     * The configured permission mode (e.g. 0755), or null for the default.
+     */
+    public function mode(): ?int
+    {
+        return $this->mode;
     }
 
     public function process(AssetFilePath $destination, IOInterface $io, bool $globalSymlink, bool $dryRun = false): bool
@@ -96,14 +107,15 @@ final class MergeOp implements OperationInterface
         }
 
         if ($dryRun) {
-            $io->write(sprintf('  - Would merge <info>%s</info> (%s) from <comment>%s</comment>', $label, $format, $this->source->packageName() ?: 'root'));
+            $io->write(sprintf('  - Would merge <info>%s</info> (%s) from <comment>%s</comment>%s', $label, $format, $this->source->packageName() ?: 'root', self::modeLabel($this->mode)));
 
             return true;
         }
 
         $this->ensureDirectory(dirname($destPath));
         file_put_contents($destPath, $encoded);
-        $io->write(sprintf('  - Merge <info>%s</info> (%s) from <comment>%s</comment>', $label, $format, $this->source->packageName() ?: 'root'));
+        self::applyMode($destPath, $this->mode);
+        $io->write(sprintf('  - Merge <info>%s</info> (%s) from <comment>%s</comment>%s', $label, $format, $this->source->packageName() ?: 'root', self::modeLabel($this->mode)));
 
         return true;
     }

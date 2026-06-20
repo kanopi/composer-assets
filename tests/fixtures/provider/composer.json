@@ -5,7 +5,7 @@
     "extra": {
         "composer-assets": {
             "file-mapping": {
-                "web/.htaccess": "assets/htaccess",
+                "web/.htaccess": { "path": "assets/htaccess", "mode": "0640" },
                 "web/robots.txt": { "path": "assets/robots.txt", "overwrite": false },
                 "web/.htaccess-extra": { "append": "assets/htaccess-extra", "force-append": true },
                 "web/skip-me.txt": false,

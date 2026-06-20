@@ -76,6 +76,7 @@ Each value selects an operation:
 | `{ "path": "...", "symlink": true }` | **Replace** via symlink (overrides the global `symlink`). |
 | `{ "append": "...", "prepend": "...", "default": "...", "force-append": true }` | **Append/Prepend** content (byte-level). |
 | `{ "merge": "...", "default": "...", "format": "yaml", "array": "replace", "force-merge": true }` | **Merge** structured JSON/YAML. |
+| `{ "path": "...", "mode": "0755" }` | Any write op, plus **`chmod`** the result to that mode. |
 | `false` | **Skip** — cancel a mapping inherited from another package. |
 
 Source paths are resolved **relative to the package that declares them**
@@ -90,6 +91,26 @@ Source paths are resolved **relative to the package that declares them**
   `"force-append": true` to modify a pre-existing project file.
 - Append/prepend is **idempotent**: content already present is not duplicated on
   re-runs.
+
+### File permissions (`mode`)
+
+Add `"mode"` to any **write** mapping (`replace`, `append`/`prepend`, or `merge`)
+to `chmod` the destination after it is written — handy for executable scripts or
+read-only settings files:
+
+```json
+"bin/deploy.sh":                  { "path": "assets/deploy.sh", "mode": "0755" },
+"web/sites/default/settings.php": { "append": "assets/settings-tail.php", "force-append": true, "mode": "0444" }
+```
+
+- The value is an **octal string** (`"0755"`, `"755"`, and `"0o755"` are all
+  accepted). An invalid value is an error.
+- The mode is applied **each time the file is written** (created, copied,
+  appended, or merged). It is not enforced on a run where the file is already in
+  sync and nothing is rewritten.
+- **Symlinks ignore `mode`** — `chmod` on a symlink follows it to the package
+  source, so a mode would be meaningless (and unsafe) there and is skipped.
+- The mode is **not** part of drift detection; only file *content* is compared.
 
 ### Structured merge (JSON / YAML)
 
@@ -336,6 +357,7 @@ intentionally diverge from upstream — add `"drift": false` to its mapping
 | Drift detection (`assets:check`) | ❌ | ✅ |
 | Drift resolution (`assets:reapply`) | ❌ | ✅ |
 | Dry-run preview (`assets --dry-run`) | ❌ | ✅ |
+| Per-file permissions (`mode`) | ❌ | ✅ |
 | Symlink mode | ✅ | ✅ |
 | `.gitignore` management | ✅ | ✅ |
 | Allowed-packages + delegation | ✅ | ✅ |

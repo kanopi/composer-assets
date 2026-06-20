@@ -70,6 +70,44 @@ final class OperationFactoryTest extends TestCase
         self::assertFalse($op->isManagedFile());
     }
 
+    public function testModeOctalStringIsParsed(): void
+    {
+        $op = $this->factory()->create('bin/run', ['path' => 'assets/run', 'mode' => '0755']);
+        self::assertInstanceOf(ReplaceOp::class, $op);
+        self::assertSame(0755, $op->mode());
+    }
+
+    public function testModeWithoutLeadingZeroIsParsed(): void
+    {
+        $op = $this->factory()->create('settings.php', ['path' => 'assets/settings', 'mode' => '644']);
+        self::assertInstanceOf(ReplaceOp::class, $op);
+        self::assertSame(0644, $op->mode());
+    }
+
+    public function testModeAppliesToMergeAndAppend(): void
+    {
+        $merge = $this->factory()->create('config.json', ['merge' => 'assets/frag.json', 'mode' => '0640']);
+        self::assertInstanceOf(MergeOp::class, $merge);
+        self::assertSame(0640, $merge->mode());
+
+        $append = $this->factory()->create('.htaccess', ['append' => 'assets/extra', 'mode' => '0600']);
+        self::assertInstanceOf(AppendOp::class, $append);
+        self::assertSame(0600, $append->mode());
+    }
+
+    public function testModeDefaultsToNull(): void
+    {
+        $op = $this->factory()->create('dest', ['path' => 'assets/file']);
+        self::assertInstanceOf(ReplaceOp::class, $op);
+        self::assertNull($op->mode());
+    }
+
+    public function testInvalidModeThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->factory()->create('dest', ['path' => 'assets/file', 'mode' => 'rwxr-xr-x']);
+    }
+
     public function testInvalidScalarThrows(): void
     {
         $this->expectException(\InvalidArgumentException::class);
