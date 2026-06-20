@@ -77,10 +77,41 @@ Each value selects an operation:
 | `{ "append": "...", "prepend": "...", "default": "...", "force-append": true }` | **Append/Prepend** content (byte-level). |
 | `{ "merge": "...", "default": "...", "format": "yaml", "array": "replace", "force-merge": true }` | **Merge** structured JSON/YAML. |
 | `{ "path": "...", "mode": "0755" }` | Any write op, plus **`chmod`** the result to that mode. |
+| `"assets/dir/"` or `"assets/*.yml"` (directory or glob source) | **Replace** every matched file (see below). |
 | `false` | **Skip** — cancel a mapping inherited from another package. |
 
 Source paths are resolved **relative to the package that declares them**
 (for the root project, relative to the project root).
+
+### Directory and glob mappings
+
+A `replace` mapping (a plain string, or an object with `path`) whose **source is
+a directory or a glob pattern** expands into one entry per matched file:
+
+```json
+".github/":            "assets/github/",          // directory: recursive, structure preserved
+".circleci/":          "assets/circleci/*.yml",    // glob: single level, flattened by basename
+"bin/":                { "path": "assets/bin/", "mode": "0755" }
+```
+
+- **Directory source** (`assets/github/`) — copies the whole tree recursively,
+  **preserving subdirectories** (`assets/github/workflows/ci.yml` →
+  `.github/workflows/ci.yml`). The trailing slash is optional. Includes dotfiles.
+- **Glob source** (`assets/circleci/*.yml`) — matches a **single level** (no
+  `**` recursion) and places each match in the destination directory **by its
+  basename**. Like the shell, a leading-dot file is *not* matched by `*`; use a
+  directory source to capture dotfiles. A glob that matches nothing warns and is
+  skipped.
+- The destination key is treated as a **target directory**; each file lands at
+  `key + <relative path or basename>`. Use `""` to target the project root.
+- Sibling options (`overwrite`, `symlink`, `gitignore`, `mode`) apply to **every**
+  expanded file.
+- Expansion produces ordinary per-file mappings, so everything downstream is
+  unchanged: precedence still wins by concrete destination (a later package — or
+  the root with `false` — can override or skip an individual expanded file), and
+  drift, `.gitignore` management, and `mode` all work per file.
+- Only `replace` expands. `append` / `prepend` / `merge` / `skip` entries are
+  always single-file.
 
 **Append/Prepend details**
 
@@ -358,6 +389,7 @@ intentionally diverge from upstream — add `"drift": false` to its mapping
 | Drift resolution (`assets:reapply`) | ❌ | ✅ |
 | Dry-run preview (`assets --dry-run`) | ❌ | ✅ |
 | Per-file permissions (`mode`) | ❌ | ✅ |
+| Directory / glob mappings | ❌ | ✅ |
 | Symlink mode | ✅ | ✅ |
 | `.gitignore` management | ✅ | ✅ |
 | Allowed-packages + delegation | ✅ | ✅ |

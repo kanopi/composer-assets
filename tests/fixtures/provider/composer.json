@@ -11,7 +11,8 @@
                 "web/skip-me.txt": false,
                 "package.json": { "merge": "assets/package-fragment.json", "force-merge": true },
                 ".tugboat/config.yml": { "merge": "assets/tugboat-overlay.yml", "force-merge": true },
-                ".circleci/config.yml": { "path": "assets/circleci.yml", "gitignore": false }
+                ".circleci/config.yml": { "path": "assets/circleci.yml", "gitignore": false },
+                ".github/": "assets/github/"
             }
         }
     }

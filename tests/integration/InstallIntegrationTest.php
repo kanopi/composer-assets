@@ -106,6 +106,10 @@ final class InstallIntegrationTest extends TestCase
         // gitignore:false replace — the CI config is scaffolded (and stays tracked).
         self::assertFileExists($this->workdir . '/.circleci/config.yml');
 
+        // Directory mapping — the whole assets/github/ tree is scaffolded, structure preserved.
+        self::assertStringEqualsFile($this->workdir . '/.github/CODEOWNERS', "* @acme/team\n");
+        self::assertStringEqualsFile($this->workdir . '/.github/workflows/test.yml', "name: test\n");
+
         // JSON merge: provider's scripts/devDependencies merged into existing package.json.
         $pkg = json_decode((string) file_get_contents($this->workdir . '/package.json'), true);
         self::assertSame('vite build', $pkg['scripts']['build'], 'existing script preserved');

@@ -109,8 +109,10 @@ final class Handler
             if (!$options->hasFileMapping()) {
                 continue;
             }
-            $factory = new OperationFactory($package->getName(), $this->installPath($package, $projectRoot));
-            foreach ($options->fileMapping() as $destination => $value) {
+            $packageRoot = $this->installPath($package, $projectRoot);
+            $factory = new OperationFactory($package->getName(), $packageRoot);
+            $expanded = (new MappingExpander($this->io))->expand($options->fileMapping(), $packageRoot);
+            foreach ($expanded as $destination => $value) {
                 $dest = AssetFilePath::destination($projectRoot, (string) $destination);
                 $driftCheck = true;
                 if (is_array($value) && array_key_exists('drift', $value)) {
