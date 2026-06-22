@@ -63,9 +63,8 @@ All configuration lives under `extra.composer-assets`:
 ### `file-mapping`
 
 The keys are **destination paths relative to your project root** (the directory
-containing the root `composer.json`). There is **no `locations`/`web-root`
-indirection** — if your docroot is `web/`, just write `web/...`; to target the
-project root, write the path directly.
+containing the root `composer.json`). Write a literal path (`web/.htaccess`), or
+use a **path token** (below) so a mapping isn't tied to one docroot layout.
 
 Each value selects an operation:
 
@@ -83,6 +82,37 @@ Each value selects an operation:
 
 Source paths are resolved **relative to the package that declares them**
 (for the root project, relative to the project root).
+
+### Path tokens (`[web-root]`, `[project-root]`)
+
+Destination keys may use two tokens so a mapping isn't hard-coded to one docroot
+layout — useful for recipe packages that target both Drupal (`web/`) and
+WordPress (`public/`) projects:
+
+```json
+"[web-root]/.htaccess":      "assets/htaccess",
+"[web-root]/robots.txt":     "assets/robots.txt",
+"[project-root]/.gitignore": "assets/gitignore"
+```
+
+- **`[project-root]`** — the project root (an empty prefix). `[project-root]/x`
+  is just `x`; it's there for clarity/parity.
+- **`[web-root]`** — the docroot, resolved (first match wins) from:
+  1. `extra.composer-assets.web-root`,
+  2. Drupal scaffold's `extra.drupal-scaffold.locations.web-root`,
+  3. `extra.wordpress-install-dir` (e.g. `kanopi/wp-core-installer`),
+  4. otherwise the **project root**.
+
+So if your project already configures its docroot through Drupal scaffold or a
+WordPress core installer, **you don't define it again** — `[web-root]` picks it
+up. To set it explicitly (or override the others):
+
+```json
+{ "extra": { "composer-assets": { "web-root": "web" } } }
+```
+
+Tokens are resolved against the **root project's** docroot (even for mappings
+declared by a dependency), and a misspelled token (e.g. `[webroot]`) is an error.
 
 ### Directory and glob mappings
 
@@ -586,7 +616,7 @@ Read-only. Pass paths to limit the listing to specific files.
 |---|---|---|
 | Config key | `extra.drupal-scaffold` | `extra.composer-assets` |
 | Implicit allowed package | `drupal/core` | none (agnostic) |
-| Web root | `locations.web-root` token (`[web-root]`) | plain project-relative paths |
+| Web root | `locations.web-root` token (`[web-root]`) | literal paths, or `[web-root]`/`[project-root]` tokens auto-resolved from drupal-scaffold / `wordpress-install-dir` / `composer-assets.web-root` |
 | Command | `composer drupal:scaffold` | `composer assets` |
 | Post hook | `post-drupal-scaffold-cmd` | `post-composer-assets-cmd` |
 | Replace / append / skip | ✅ | ✅ |

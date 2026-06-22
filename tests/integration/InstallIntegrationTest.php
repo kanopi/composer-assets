@@ -62,6 +62,9 @@ final class InstallIntegrationTest extends TestCase
                 'acme/assets-provider' => '*',
             ],
             'extra' => [
+                // Docroot configured via Drupal scaffold; the [web-root] token must
+                // pick it up without a composer-assets.web-root of its own.
+                'drupal-scaffold' => ['locations' => ['web-root' => 'web']],
                 // Global default mode applies to files without their own per-file "mode".
                 'composer-assets' => [
                     'allowed-packages' => ['acme/assets-provider'],
@@ -71,6 +74,8 @@ final class InstallIntegrationTest extends TestCase
                         // file and just flip it to owned (overwrite:false), so local
                         // edits are kept and it becomes drift-tracked.
                         'web/override-me.txt' => ['overwrite' => false],
+                        // [web-root] token resolves to "web" from drupal-scaffold above.
+                        '[web-root]/from-token.txt' => 'assets/token-source.txt',
                     ],
                 ],
             ],
@@ -86,6 +91,9 @@ final class InstallIntegrationTest extends TestCase
         file_put_contents($this->workdir . '/web/.htaccess-extra', "ORIGINAL\n");
         // Pre-existing, locally-edited copy of the option-only-override target.
         file_put_contents($this->workdir . '/web/override-me.txt', "LOCAL EDIT\n");
+        // Root-project source for the [web-root] token mapping.
+        mkdir($this->workdir . '/assets', 0777, true);
+        file_put_contents($this->workdir . '/assets/token-source.txt', "tokenized\n");
 
         // Pre-existing structured files prove JSON + YAML merge.
         file_put_contents(
@@ -136,6 +144,9 @@ final class InstallIntegrationTest extends TestCase
         // Directory mapping — the whole assets/github/ tree is scaffolded, structure preserved.
         self::assertStringEqualsFile($this->workdir . '/.github/CODEOWNERS', "* @acme/team\n");
         self::assertStringEqualsFile($this->workdir . '/.github/workflows/test.yml', "name: test\n");
+
+        // [web-root] token resolved to "web" (from drupal-scaffold config) -> file landed under web/.
+        self::assertStringEqualsFile($this->workdir . '/web/from-token.txt', "tokenized\n");
 
         // Conditional mappings:
         // - "if" on a present package -> scaffolded.

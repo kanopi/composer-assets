@@ -171,6 +171,7 @@ final class Handler
         $projectRoot = $this->projectRoot();
         $globalMode = $this->optionsFor($this->composer->getPackage())->mode();
         $evaluator = $this->conditionEvaluator($projectRoot);
+        $tokens = $this->tokens();
         $allowed = (new AllowedPackages($this->composer, $this->io))->getAllowedPackages();
 
         /** @var array<string, array{value: mixed, factory: OperationFactory, provider: string}> $records */
@@ -186,7 +187,10 @@ final class Handler
             $resolved = $evaluator->resolve($raw);
             $expanded = (new MappingExpander($this->io))->expand($resolved, $packageRoot);
             foreach ($expanded as $destination => $value) {
-                $destination = (string) $destination;
+                // Resolve [project-root]/[web-root] tokens to canonical
+                // project-relative paths before keying records (so cross-package
+                // overrides match) and building the destination.
+                $destination = $tokens->expand((string) $destination);
                 if (self::isOptionOnlyOverride($value)) {
                     if (!isset($records[$destination])) {
                         throw new \InvalidArgumentException(sprintf(
@@ -373,6 +377,45 @@ final class Handler
         $env = getenv();
 
         return new ConditionEvaluator($versions, $php, is_array($env) ? $env : [], $projectRoot);
+    }
+
+    /**
+     * Builds the path-token resolver. `[web-root]` is taken from (in precedence)
+     * `extra.composer-assets.web-root`, then Drupal scaffold's
+     * `drupal-scaffold.locations.web-root`, then `wordpress-install-dir`, then the
+     * project root — so a project that already configures its docroot via one of
+     * those plugins doesn't have to repeat it here.
+     */
+    private function tokens(): Tokens
+    {
+        return new Tokens([
+            '[project-root]' => '',
+            '[web-root]' => $this->resolveWebRoot(),
+        ]);
+    }
+
+    private function resolveWebRoot(): string
+    {
+        $extra = $this->composer->getPackage()->getExtra();
+
+        $explicit = $this->optionsFor($this->composer->getPackage())->webRoot();
+        $drupal = $extra['drupal-scaffold']['locations']['web-root'] ?? null;
+        $wordpress = $extra['wordpress-install-dir'] ?? null;
+
+        foreach ([$explicit, $drupal, $wordpress] as $candidate) {
+            if (is_string($candidate)) {
+                return self::normalizeWebRoot($candidate);
+            }
+        }
+
+        return ''; // nothing configured -> the project root.
+    }
+
+    private static function normalizeWebRoot(string $value): string
+    {
+        $value = rtrim(str_replace('\\', '/', trim($value)), '/');
+
+        return $value === '.' ? '' : $value;
     }
 
     private function optionsFor(PackageInterface $package): AssetsOptions

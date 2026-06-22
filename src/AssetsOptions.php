@@ -25,6 +25,7 @@ final class AssetsOptions
         private readonly bool $failOnDrift,
         private readonly ?int $mode,
         private readonly array $conditional,
+        private readonly ?string $webRoot,
     ) {
     }
 
@@ -50,6 +51,11 @@ final class AssetsOptions
             throw new \InvalidArgumentException('"composer-assets.conditional" must be an array of condition groups.');
         }
 
+        $webRoot = $extra['web-root'] ?? null;
+        if ($webRoot !== null && !is_string($webRoot)) {
+            throw new \InvalidArgumentException('"composer-assets.web-root" must be a string.');
+        }
+
         return new self(
             $fileMapping,
             (bool) ($extra['symlink'] ?? false),
@@ -58,6 +64,7 @@ final class AssetsOptions
             (bool) ($extra['fail-on-drift'] ?? false),
             FileMode::parse($extra['mode'] ?? null),
             array_values($conditional),
+            $webRoot,
         );
     }
 
@@ -84,6 +91,15 @@ final class AssetsOptions
     public function hasConditional(): bool
     {
         return $this->conditional !== [];
+    }
+
+    /**
+     * Explicit `composer-assets.web-root` for the `[web-root]` token, or null to
+     * fall back to other plugins' config (handled by the Handler).
+     */
+    public function webRoot(): ?string
+    {
+        return $this->webRoot;
     }
 
     public function symlink(): bool

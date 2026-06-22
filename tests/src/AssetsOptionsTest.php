@@ -77,4 +77,20 @@ final class AssetsOptionsTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         AssetsOptions::create(['conditional' => 'nope']);
     }
+
+    public function testWebRootDefaultsToNull(): void
+    {
+        self::assertNull(AssetsOptions::create([])->webRoot());
+    }
+
+    public function testReadsWebRoot(): void
+    {
+        self::assertSame('web', AssetsOptions::create(['web-root' => 'web'])->webRoot());
+    }
+
+    public function testInvalidWebRootThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        AssetsOptions::create(['web-root' => ['nope']]);
+    }
 }
